@@ -1,0 +1,6 @@
+# Ядро MVP
+numpy>=1.24
+
+# Опционально:
+#   matplotlib>=3.7   # графики (pip install -e '.[viz]')
+#   pytest>=7         # тесты   (pip install -e '.[dev]')

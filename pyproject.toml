@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "thinking-system"
+version = "0.0.1"
+description = "Brain-inspired thinking system that improves its understanding over time (MVP: predictive loop)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = ["numpy>=1.24"]
+
+[project.optional-dependencies]
+viz = ["matplotlib>=3.7"]
+dev = ["pytest>=7"]
+# future: dl = ["torch"]  # обучаемый JEPA-энкодер / GPU-предиктор (тот же интерфейс)
+
+[project.scripts]
+thinking-mvp = "run_mvp:main"
+
+[tool.setuptools]
+py-modules = ["run_mvp"]
+
+[tool.setuptools.packages.find]
+include = ["thinking_system*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
