@@ -52,6 +52,7 @@ from thinking_system.agent.lifelong import LifelongAgent
 from thinking_system.reasoning.induction import Primitive, Program, induce, Library, default_primitives, default_library
 from thinking_system.reasoning.relational import KnowledgeBase, forward_chain
 from thinking_system.reasoning.causal import SCM
+from thinking_system.reasoning.grounded import induce_dynamics, WorldRule, pair_primitives
 from thinking_system.agent.qoption import QOption, QOptionLibrary
 from thinking_system.agent.latent_qoption import TileEncoder, LatentQOption, jepa_encoder
 from thinking_system.memory.skill_policies import OptionPolicies
@@ -163,4 +164,8 @@ __all__ = [
     "forward_chain",
     # рассуждение: причинное (do-вмешательства, контрфактика, планирование)
     "SCM",
+    # рассуждение, зазёмленное в мире: индукция динамики из наблюдений агента
+    "induce_dynamics",
+    "WorldRule",
+    "pair_primitives",
 ]
