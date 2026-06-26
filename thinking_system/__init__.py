@@ -35,6 +35,9 @@ from thinking_system.metrics.curiosity import CuriosityTracker
 from thinking_system.metrics.continual import ContinualEvaluator
 from thinking_system.tasks.sequence import Task, make_task_sequence
 from thinking_system.consolidation.continual import ContinualLearner
+from thinking_system.predictors.symbolic import SymbolicPredictor
+from thinking_system.text.ingest import load_book, load_corpus
+from thinking_system.text.vocab import CharVocab
 
 __version__ = "0.0.1"
 
@@ -59,4 +62,9 @@ __all__ = [
     "ContinualEvaluator",
     "Task",
     "make_task_sequence",
+    # реальные данные — обучение по книгам (текст)
+    "SymbolicPredictor",
+    "load_book",
+    "load_corpus",
+    "CharVocab",
 ]

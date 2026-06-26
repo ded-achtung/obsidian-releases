@@ -14,6 +14,7 @@ dependencies = ["numpy>=1.24"]
 [project.optional-dependencies]
 viz = ["matplotlib>=3.7"]
 dev = ["pytest>=7"]
+text = ["pymupdf>=1.24"]  # чтение PDF-книг (Markdown/txt работают без него)
 # future: dl = ["torch"]  # обучаемый JEPA-энкодер / GPU-предиктор (тот же интерфейс)
 
 [project.scripts]
