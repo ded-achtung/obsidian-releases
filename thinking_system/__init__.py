@@ -44,6 +44,8 @@ from thinking_system.agent.belief import BeliefAgent
 from thinking_system.agent.unified import UnifiedAgent
 from thinking_system.agent.mega import MegaAgent
 from thinking_system.agent.intrinsic import IntrinsicAgent
+from thinking_system.agent.autotelic import AutotelicAgent
+from thinking_system.memory.skill_policies import OptionPolicies
 from thinking_system.world.gridworld import GridWorld, default_maze
 from thinking_system.world.latent_model import LatentWorldModel
 from thinking_system.world.partial import PartialGridWorld
@@ -109,4 +111,6 @@ __all__ = [
     "FeatureWorld",
     # внутренняя мотивация: агент сам ставит себе цели
     "IntrinsicAgent",
+    "AutotelicAgent",   # любопытство движет поведением в шумном мире (JEPA-восприятие)
+    "OptionPolicies",   # навыки как политики-опции (иерархический RL)
 ]
