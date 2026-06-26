@@ -45,6 +45,7 @@ from thinking_system.agent.unified import UnifiedAgent
 from thinking_system.agent.mega import MegaAgent
 from thinking_system.agent.intrinsic import IntrinsicAgent
 from thinking_system.agent.autotelic import AutotelicAgent
+from thinking_system.agent.qoption import QOption, QOptionLibrary
 from thinking_system.memory.skill_policies import OptionPolicies
 from thinking_system.world.gridworld import GridWorld, default_maze
 from thinking_system.world.latent_model import LatentWorldModel
@@ -113,4 +114,7 @@ __all__ = [
     "IntrinsicAgent",
     "AutotelicAgent",   # любопытство движет поведением в шумном мире (JEPA-восприятие)
     "OptionPolicies",   # навыки как политики-опции (иерархический RL)
+    # навыки из опыта: Q-learning опции (иерархический RL без готовой карты)
+    "QOption",
+    "QOptionLibrary",
 ]
