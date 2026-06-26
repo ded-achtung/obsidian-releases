@@ -37,7 +37,8 @@ from thinking_system.tasks.sequence import Task, make_task_sequence
 from thinking_system.consolidation.continual import ContinualLearner
 from thinking_system.predictors.symbolic import SymbolicPredictor
 from thinking_system.text.ingest import load_book, load_corpus
-from thinking_system.text.vocab import CharVocab
+from thinking_system.text.vocab import ByteVocab, CharVocab
+from thinking_system.agent.cognitive import CognitiveAgent
 
 __version__ = "0.0.1"
 
@@ -67,4 +68,7 @@ __all__ = [
     "load_book",
     "load_corpus",
     "CharVocab",
+    "ByteVocab",
+    # единый когнитивный контур (восприятие→предсказание→использование→память)
+    "CognitiveAgent",
 ]
