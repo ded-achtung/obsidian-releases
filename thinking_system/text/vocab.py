@@ -1,8 +1,32 @@
-"""Символьный словарь: текст ↔ последовательность id символов."""
+"""Словари: текст ↔ последовательность id.
+
+Два уровня:
+  • ByteVocab  — УНИВЕРСАЛЬНЫЙ (UTF-8 байты, фиксированный словарь 256). Одинаково
+                 кодирует любой язык и любой код без языковой настройки. Рекомендуется.
+  • CharVocab  — символы Unicode; многоязычен, но словарь зависит от корпуса.
+Оба дают одинаковый интерфейс (size / encode / decode), поэтому предиктор и
+датасет работают с любым из них без изменений.
+"""
 
 from __future__ import annotations
 
 import numpy as np
+
+
+class ByteVocab:
+    """Универсальный байтовый словарь (UTF-8): любой язык и код → байты 0..255.
+
+    Словарь фиксирован (256) и не зависит от корпуса — новый язык/символ никогда
+    не требует менять словарь. Это и есть «учить все языки и код одинаково».
+    """
+
+    size = 256
+
+    def encode(self, text: str) -> np.ndarray:
+        return np.frombuffer(text.encode("utf-8"), dtype=np.uint8).astype(np.int64)
+
+    def decode(self, ids: np.ndarray | list[int]) -> str:
+        return bytes(int(i) & 0xFF for i in ids).decode("utf-8", errors="replace")
 
 
 class CharVocab:

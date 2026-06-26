@@ -9,7 +9,7 @@ import numpy as np
 from thinking_system.predictors.symbolic import SymbolicPredictor
 from thinking_system.text.dataset import eval_bpc, make_pairs, train_test_split, unigram_bpc, uniform_bpc
 from thinking_system.text.ingest import load_book
-from thinking_system.text.vocab import CharVocab
+from thinking_system.text.vocab import ByteVocab, CharVocab
 
 
 def test_vocab_roundtrip() -> None:
@@ -44,6 +44,37 @@ def test_load_pdf_roundtrip(tmp_path: Path) -> None:
     doc.close()
     text = load_book(pdf)
     assert "plus one equals two" in text
+
+
+def test_byte_vocab_universal_roundtrip() -> None:
+    # Один словарь 256 на ВСЁ: разные языки, эмодзи и код — точный round-trip.
+    v = ByteVocab()
+    s = "Hello мир 世界 🌍\ndef f(x): return x + 1  # комментарий\n"
+    ids = v.encode(s)
+    assert v.size == 256
+    assert int(ids.min()) >= 0 and int(ids.max()) < 256
+    assert v.decode(ids) == s
+
+
+def test_byte_model_learns_multilingual_and_code() -> None:
+    # Байтовый уровень учит смесь языков + кода и бьёт unigram на held-out.
+    text = (
+        "def add(a, b): return a + b  # сложение двух чисел\n"
+        "The result is positive. Результат положительный.\n"
+    ) * 150
+    v = ByteVocab()
+    ids = v.encode(text)
+    train, test = train_test_split(ids, train_frac=0.85)
+    ctx_tr, tgt_tr = make_pairs(train, 8)
+    ctx_te, tgt_te = make_pairs(test, 8)
+
+    pred = SymbolicPredictor(v.size, 8, emb_dim=16, hidden_dim=64, lr=3e-3, weight_decay=1e-3, seed=0)
+    rng = np.random.default_rng(0)
+    for _ in range(5000):
+        b = rng.integers(0, len(ctx_tr), 64)
+        pred.update(ctx_tr[b], tgt_tr[b])
+
+    assert eval_bpc(pred, ctx_te, tgt_te) < unigram_bpc(train, tgt_te, v.size)
 
 
 def test_model_beats_unigram_on_structured_text() -> None:

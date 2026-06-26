@@ -10,7 +10,12 @@ import re
 from pathlib import Path
 
 _PDF_SUFFIXES = {".pdf"}
-_TEXT_SUFFIXES = {".md", ".markdown", ".txt", ".text"}
+_TEXT_SUFFIXES = {
+    ".md", ".markdown", ".txt", ".text",
+    # код — система учится и на нём (всё это просто текст)
+    ".py", ".js", ".ts", ".java", ".c", ".cpp", ".h", ".hpp", ".go", ".rs",
+    ".rb", ".sh", ".html", ".css", ".sql", ".json", ".yaml", ".yml", ".toml",
+}
 
 
 def _normalize(text: str) -> str:

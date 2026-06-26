@@ -25,18 +25,20 @@ from thinking_system.memory.buffer import EpisodicBuffer
 from thinking_system.predictors.symbolic import SymbolicPredictor
 from thinking_system.text.dataset import accuracy, eval_bpc, make_pairs, train_test_split, unigram_bpc, uniform_bpc
 from thinking_system.text.ingest import load_book, load_corpus
-from thinking_system.text.vocab import CharVocab
+from thinking_system.text.vocab import ByteVocab, CharVocab
 from thinking_system.viz import sparkline
 
 
-def _generate(pred: SymbolicPredictor, vocab: CharVocab, seed_ids: np.ndarray, n: int, *, temp: float = 0.8, rng=None) -> str:
+def _generate(pred: SymbolicPredictor, vocab, seed_ids: np.ndarray, n: int, *, temp: float = 0.7, top_k: int = 20, rng=None) -> str:
     rng = rng or np.random.default_rng(0)
     ctx = list(seed_ids[-pred.context_len :])
     out: list[int] = []
     for _ in range(n):
-        logits = pred.logits(np.array(ctx[-pred.context_len :]))
-        logits = logits / temp
-        p = np.exp(logits - logits.max())
+        logits = pred.logits(np.array(ctx[-pred.context_len :])) / temp
+        if top_k and top_k < len(logits):  # top-k: семплируем только из k вероятнейших (против вырождения)
+            cut = np.partition(logits, -top_k)[-top_k]
+            logits = np.where(logits >= cut, logits, -np.inf)
+        p = np.exp(logits - np.nanmax(logits))
         p /= p.sum()
         nxt = int(rng.choice(len(p), p=p))
         out.append(nxt)
@@ -46,7 +48,8 @@ def _generate(pred: SymbolicPredictor, vocab: CharVocab, seed_ids: np.ndarray, n
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Learn from real books (PDF/MD) — held-out bits-per-character")
-    ap.add_argument("--books", default="books", help="папка с книгами")
+    ap.add_argument("--books", default="books", help="папка с книгами или путь к файлу")
+    ap.add_argument("--level", choices=["byte", "char"], default="byte", help="byte = универсально (все языки+код); char = символы Unicode")
     ap.add_argument("--context-len", type=int, default=8)
     ap.add_argument("--emb-dim", type=int, default=16)
     ap.add_argument("--hidden", type=int, default=96)
@@ -69,10 +72,11 @@ def main() -> None:
     if not text.strip():
         print(f"'{args.books}' пуст. Положи туда книги (PDF / .md / .txt) и запусти снова.")
         return
-    vocab = CharVocab(text)
+    vocab = ByteVocab() if args.level == "byte" else CharVocab(text)
+    unit = "байт" if args.level == "byte" else "символов"
     ids = vocab.encode(text)
     print(f"▶ Книги: {sources}")
-    print(f"  символов: {len(ids)}, словарь: {vocab.size}")
+    print(f"  уровень: {args.level}  ({len(ids)} {unit}, словарь: {vocab.size})")
 
     train_ids, test_ids = train_test_split(ids, train_frac=args.train_frac)
     ctx_tr, tgt_tr = make_pairs(train_ids, args.context_len)
@@ -119,12 +123,14 @@ def main() -> None:
     bpc_model = eval_bpc(pred, ctx_te, tgt_te)
     acc_model = accuracy(pred, ctx_te, tgt_te)
 
-    print("  held-out BPC по ходу обучения: " + sparkline(curve))
-    print("\n── Held-out качество (bits-per-character, меньше = лучше) ──")
-    print(f"  uniform (угадывание)     : {bpc_uniform:.3f}")
-    print(f"  unigram (частоты символов): {bpc_unigram:.3f}")
-    print(f"  МОДЕЛЬ (контекст {args.context_len} симв.): {bpc_model:.3f}   (лучшее по ходу: {best:.3f})")
-    print(f"  точность следующего символа: {acc_model * 100:.1f}%")
+    metric = "bits/byte" if args.level == "byte" else "bits/char"
+    u = "байта" if args.level == "byte" else "символа"
+    print("  held-out по ходу обучения: " + sparkline(curve))
+    print(f"\n── Held-out качество ({metric}, меньше = лучше) ──")
+    print(f"  uniform (угадывание)      : {bpc_uniform:.3f}")
+    print(f"  unigram (частоты)         : {bpc_unigram:.3f}")
+    print(f"  МОДЕЛЬ (контекст {args.context_len})       : {bpc_model:.3f}   (лучшее по ходу: {best:.3f})")
+    print(f"  точность следующего {u}: {acc_model * 100:.1f}%")
 
     seed_ids = test_ids[: args.context_len]
     print("\n── Сгенерировано моделью (после обучения на книге) ──")
@@ -132,8 +138,8 @@ def main() -> None:
 
     learned = bpc_model < bpc_unigram and bpc_model < bpc_uniform
     print("\n── Итог ──")
-    print(f"  модель бьёт unigram-бейзлайн на held-out (выучила контекст, а не только частоты): {'да' if learned else 'нет'}")
-    print(f"  сжатие против равномерного: {bpc_uniform / bpc_model:.2f}× меньше неопределённости на символ")
+    print(f"  модель бьёт unigram на held-out (выучила контекст, а не только частоты): {'да' if learned else 'нет'}")
+    print(f"  сжатие против равномерного: {bpc_uniform / bpc_model:.2f}× меньше неопределённости на {u[:-1] if u.endswith('а') else u}")
 
 
 if __name__ == "__main__":
