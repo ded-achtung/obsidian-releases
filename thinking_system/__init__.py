@@ -32,6 +32,9 @@ from thinking_system.envs.multichannel import MultiChannelEnv
 from thinking_system.policies.active_inference import ActiveInferencePolicy, RandomPolicy
 from thinking_system.metrics.tracker import MetricsTracker
 from thinking_system.metrics.curiosity import CuriosityTracker
+from thinking_system.metrics.continual import ContinualEvaluator
+from thinking_system.tasks.sequence import Task, make_task_sequence
+from thinking_system.consolidation.continual import ContinualLearner
 
 __version__ = "0.0.1"
 
@@ -51,4 +54,9 @@ __all__ = [
     "ActiveInferencePolicy",
     "RandomPolicy",
     "CuriosityTracker",
+    # шаг 3 — консолидация / непрерывное обучение
+    "ContinualLearner",
+    "ContinualEvaluator",
+    "Task",
+    "make_task_sequence",
 ]

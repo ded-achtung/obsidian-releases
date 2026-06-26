@@ -37,6 +37,8 @@ class SyntheticStream(Stream):
         n_modes: int = 3,
         dt: float = 0.1,
         noise: float = 0.02,
+        freq_lo: float = 0.5,
+        freq_hi: float = 2.0,
         seed: int = 0,
     ) -> None:
         rng = np.random.default_rng(seed)
@@ -44,7 +46,7 @@ class SyntheticStream(Stream):
         self._n_modes = n_modes
         self._dt = dt
         self._noise = noise
-        self._freqs = rng.uniform(0.5, 2.0, size=n_modes)
+        self._freqs = rng.uniform(freq_lo, freq_hi, size=n_modes)
         self._phases = rng.uniform(0.0, 2.0 * np.pi, size=n_modes)
         self._proj = rng.standard_normal((2 * n_modes, obs_dim)) / np.sqrt(2 * n_modes)
         self._rng = rng
