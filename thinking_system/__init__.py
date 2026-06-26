@@ -50,6 +50,7 @@ from thinking_system.agent.transfer import transfer_option, train_across_worlds,
 from thinking_system.agent.spectral_options import SpectralOptions, GridSpectralDiscoverer, kmeans
 from thinking_system.agent.lifelong import LifelongAgent
 from thinking_system.reasoning.induction import Primitive, Program, induce, Library, default_primitives, default_library
+from thinking_system.reasoning.relational import KnowledgeBase, forward_chain
 from thinking_system.agent.qoption import QOption, QOptionLibrary
 from thinking_system.agent.latent_qoption import TileEncoder, LatentQOption, jepa_encoder
 from thinking_system.memory.skill_policies import OptionPolicies
@@ -156,4 +157,7 @@ __all__ = [
     "Library",
     "default_primitives",
     "default_library",
+    # рассуждение: реляционно-аналоговое (мини-Datalog, транзитивность, аналогии)
+    "KnowledgeBase",
+    "forward_chain",
 ]
