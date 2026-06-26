@@ -47,6 +47,7 @@ from thinking_system.agent.intrinsic import IntrinsicAgent
 from thinking_system.agent.autotelic import AutotelicAgent
 from thinking_system.agent.option_discovery import OptionDiscoverer
 from thinking_system.agent.transfer import transfer_option, train_across_worlds, reach_rate
+from thinking_system.agent.spectral_options import SpectralOptions, GridSpectralDiscoverer, kmeans
 from thinking_system.agent.qoption import QOption, QOptionLibrary
 from thinking_system.agent.latent_qoption import TileEncoder, LatentQOption, jepa_encoder
 from thinking_system.memory.skill_policies import OptionPolicies
@@ -140,4 +141,8 @@ __all__ = [
     "transfer_option",
     "train_across_worlds",
     "reach_rate",
+    # спектральные eigenoptions: горлышки из спектра графа / латентов (Фидлер, Лаплас)
+    "SpectralOptions",
+    "GridSpectralDiscoverer",
+    "kmeans",
 ]
