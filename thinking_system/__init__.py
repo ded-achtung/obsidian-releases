@@ -43,6 +43,7 @@ from thinking_system.agent.acting import ActingAgent
 from thinking_system.agent.belief import BeliefAgent
 from thinking_system.agent.unified import UnifiedAgent
 from thinking_system.agent.mega import MegaAgent
+from thinking_system.agent.intrinsic import IntrinsicAgent
 from thinking_system.world.gridworld import GridWorld, default_maze
 from thinking_system.world.latent_model import LatentWorldModel
 from thinking_system.world.partial import PartialGridWorld
@@ -106,4 +107,6 @@ __all__ = [
     "MegaAgent",
     "CellFeatures",
     "FeatureWorld",
+    # внутренняя мотивация: агент сам ставит себе цели
+    "IntrinsicAgent",
 ]
