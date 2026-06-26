@@ -44,6 +44,7 @@ from thinking_system.agent.belief import BeliefAgent
 from thinking_system.world.gridworld import GridWorld, default_maze
 from thinking_system.world.latent_model import LatentWorldModel
 from thinking_system.world.partial import PartialGridWorld
+from thinking_system.language.grounding import GoalClassifier, generate_commands, goal_cell
 
 __version__ = "0.0.1"
 
@@ -84,4 +85,8 @@ __all__ = [
     # частичная наблюдаемость (POMDP): вера + активный вывод
     "PartialGridWorld",
     "BeliefAgent",
+    # язык → цель → поведение
+    "GoalClassifier",
+    "generate_commands",
+    "goal_cell",
 ]
