@@ -46,6 +46,7 @@ from thinking_system.agent.mega import MegaAgent
 from thinking_system.agent.intrinsic import IntrinsicAgent
 from thinking_system.agent.autotelic import AutotelicAgent
 from thinking_system.agent.option_discovery import OptionDiscoverer
+from thinking_system.agent.transfer import transfer_option, train_across_worlds, reach_rate
 from thinking_system.agent.qoption import QOption, QOptionLibrary
 from thinking_system.agent.latent_qoption import TileEncoder, LatentQOption, jepa_encoder
 from thinking_system.memory.skill_policies import OptionPolicies
@@ -54,6 +55,7 @@ from thinking_system.world.latent_model import LatentWorldModel
 from thinking_system.world.partial import PartialGridWorld
 from thinking_system.world.noisy_partial import NoisyPartialWorld, unified_maze
 from thinking_system.world.rooms import rooms_world
+from thinking_system.world.maze_dist import random_maze
 from thinking_system.world.features import CellFeatures, FeatureWorld
 from thinking_system.memory.hierarchical import HierarchicalMemory
 from thinking_system.language.grounding import GoalClassifier, generate_commands, goal_cell
@@ -133,4 +135,9 @@ __all__ = [
     "DOORWAYS",
     # внутренняя мотивация над опциями: агент сам открывает подцели-горлышки
     "OptionDiscoverer",
+    # перенос навыка между мирами: zero-shot и few-shot тёплый старт
+    "random_maze",
+    "transfer_option",
+    "train_across_worlds",
+    "reach_rate",
 ]
