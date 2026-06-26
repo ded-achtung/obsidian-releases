@@ -46,6 +46,7 @@ from thinking_system.agent.mega import MegaAgent
 from thinking_system.agent.intrinsic import IntrinsicAgent
 from thinking_system.agent.autotelic import AutotelicAgent
 from thinking_system.agent.qoption import QOption, QOptionLibrary
+from thinking_system.agent.latent_qoption import TileEncoder, LatentQOption, jepa_encoder
 from thinking_system.memory.skill_policies import OptionPolicies
 from thinking_system.world.gridworld import GridWorld, default_maze
 from thinking_system.world.latent_model import LatentWorldModel
@@ -117,4 +118,8 @@ __all__ = [
     # навыки из опыта: Q-learning опции (иерархический RL без готовой карты)
     "QOption",
     "QOptionLibrary",
+    # Q над восприятием: функциональная аппроксимация вместо таблицы (тайлы / латенты JEPA)
+    "TileEncoder",
+    "LatentQOption",
+    "jepa_encoder",
 ]
