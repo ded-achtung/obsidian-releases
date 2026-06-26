@@ -46,6 +46,8 @@ from thinking_system.world.gridworld import GridWorld, default_maze
 from thinking_system.world.latent_model import LatentWorldModel
 from thinking_system.world.partial import PartialGridWorld
 from thinking_system.world.noisy_partial import NoisyPartialWorld, unified_maze
+from thinking_system.world.rooms import rooms_world
+from thinking_system.memory.hierarchical import HierarchicalMemory
 from thinking_system.language.grounding import GoalClassifier, generate_commands, goal_cell
 
 __version__ = "0.0.1"
@@ -95,4 +97,7 @@ __all__ = [
     "UnifiedAgent",
     "NoisyPartialWorld",
     "unified_maze",
+    # иерархическая память: эпизод → семантика (ориентиры) → навыки
+    "HierarchicalMemory",
+    "rooms_world",
 ]
