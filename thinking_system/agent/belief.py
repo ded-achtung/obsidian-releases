@@ -50,10 +50,11 @@ class BeliefAgent:
                 free = 0 <= nr < grid.size and 0 <= nc < grid.size and (nr, nc) not in grid.walls
                 self.move[i, a] = self.idx[grid.sid((nr, nc))] if free else i
 
-        self.dist = self._bfs_goal()
         self.b = np.ones(self.F) / self.F
+        self.set_goal(grid.goal_state)
 
-    def _bfs_goal(self) -> np.ndarray:
+    def set_goal(self, goal_state: int) -> None:
+        """Задать цель (например, по языковой команде) — пересчитать расстояния."""
         radj: list[list[int]] = [[] for _ in range(self.F)]
         for i in range(self.F):
             for a in range(4):
@@ -61,7 +62,7 @@ class BeliefAgent:
                 if j != i:
                     radj[j].append(i)
         dist = np.full(self.F, np.inf)
-        gi = self.idx[self.g.goal_state]
+        gi = self.idx[goal_state]
         dist[gi] = 0
         q = deque([gi])
         while q:
@@ -70,7 +71,7 @@ class BeliefAgent:
                 if dist[v] == np.inf:
                     dist[v] = dist[u] + 1
                     q.append(v)
-        return dist
+        self.dist = dist
 
     # --- байесовский фильтр ---
     def observe(self, o) -> None:
