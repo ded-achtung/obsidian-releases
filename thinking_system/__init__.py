@@ -40,8 +40,10 @@ from thinking_system.text.ingest import load_book, load_corpus
 from thinking_system.text.vocab import ByteVocab, CharVocab
 from thinking_system.agent.cognitive import CognitiveAgent
 from thinking_system.agent.acting import ActingAgent
+from thinking_system.agent.belief import BeliefAgent
 from thinking_system.world.gridworld import GridWorld, default_maze
 from thinking_system.world.latent_model import LatentWorldModel
+from thinking_system.world.partial import PartialGridWorld
 
 __version__ = "0.0.1"
 
@@ -79,4 +81,7 @@ __all__ = [
     "GridWorld",
     "default_maze",
     "LatentWorldModel",
+    # частичная наблюдаемость (POMDP): вера + активный вывод
+    "PartialGridWorld",
+    "BeliefAgent",
 ]
