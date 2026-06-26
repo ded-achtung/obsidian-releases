@@ -56,6 +56,8 @@ from thinking_system.world.rooms import rooms_world
 from thinking_system.world.features import CellFeatures, FeatureWorld
 from thinking_system.memory.hierarchical import HierarchicalMemory
 from thinking_system.language.grounding import GoalClassifier, generate_commands, goal_cell
+from thinking_system.language.doorways import train_doorway_classifier, generate_doorway_commands, doorway_cell, DOORWAYS
+from thinking_system.agent.language_options import LanguageOptionAgent
 
 __version__ = "0.0.1"
 
@@ -122,4 +124,10 @@ __all__ = [
     "TileEncoder",
     "LatentQOption",
     "jepa_encoder",
+    # язык выбирает выученный навык: команда → проём → Q-опция → исполнение
+    "LanguageOptionAgent",
+    "train_doorway_classifier",
+    "generate_doorway_commands",
+    "doorway_cell",
+    "DOORWAYS",
 ]
