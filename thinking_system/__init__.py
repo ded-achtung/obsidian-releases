@@ -45,6 +45,7 @@ from thinking_system.agent.unified import UnifiedAgent
 from thinking_system.agent.mega import MegaAgent
 from thinking_system.agent.intrinsic import IntrinsicAgent
 from thinking_system.agent.autotelic import AutotelicAgent
+from thinking_system.agent.option_discovery import OptionDiscoverer
 from thinking_system.agent.qoption import QOption, QOptionLibrary
 from thinking_system.agent.latent_qoption import TileEncoder, LatentQOption, jepa_encoder
 from thinking_system.memory.skill_policies import OptionPolicies
@@ -130,4 +131,6 @@ __all__ = [
     "generate_doorway_commands",
     "doorway_cell",
     "DOORWAYS",
+    # внутренняя мотивация над опциями: агент сам открывает подцели-горлышки
+    "OptionDiscoverer",
 ]
