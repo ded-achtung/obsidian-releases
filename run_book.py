@@ -24,7 +24,7 @@ from thinking_system.core.experience import Experience
 from thinking_system.memory.buffer import EpisodicBuffer
 from thinking_system.predictors.symbolic import SymbolicPredictor
 from thinking_system.text.dataset import accuracy, eval_bpc, make_pairs, train_test_split, unigram_bpc, uniform_bpc
-from thinking_system.text.ingest import load_corpus
+from thinking_system.text.ingest import load_book, load_corpus
 from thinking_system.text.vocab import CharVocab
 from thinking_system.viz import sparkline
 
@@ -60,9 +60,14 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
-    text, sources = load_corpus(args.books)
+    import os
+
+    if os.path.isfile(args.books):
+        text, sources = load_book(args.books), [os.path.basename(args.books)]
+    else:
+        text, sources = load_corpus(args.books)
     if not text.strip():
-        print(f"Папка '{args.books}' пуста. Положи туда книги (PDF / .md / .txt) и запусти снова.")
+        print(f"'{args.books}' пуст. Положи туда книги (PDF / .md / .txt) и запусти снова.")
         return
     vocab = CharVocab(text)
     ids = vocab.encode(text)

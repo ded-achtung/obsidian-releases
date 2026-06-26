@@ -10,3 +10,10 @@ venv/
 
 # Артефакты MVP
 *.png
+
+# Загруженные книги — копирайт + крупные бинарники (образец .md остаётся в репо)
+books/*.pdf
+books/*.epub
+books/*.mobi
+books/*.djvu
+books/*.txt
