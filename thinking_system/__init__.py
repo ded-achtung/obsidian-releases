@@ -41,6 +41,7 @@ from thinking_system.text.vocab import ByteVocab, CharVocab
 from thinking_system.agent.cognitive import CognitiveAgent
 from thinking_system.agent.acting import ActingAgent
 from thinking_system.world.gridworld import GridWorld, default_maze
+from thinking_system.world.latent_model import LatentWorldModel
 
 __version__ = "0.0.1"
 
@@ -77,4 +78,5 @@ __all__ = [
     "ActingAgent",
     "GridWorld",
     "default_maze",
+    "LatentWorldModel",
 ]
