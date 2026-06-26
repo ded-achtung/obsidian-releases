@@ -42,11 +42,13 @@ from thinking_system.agent.cognitive import CognitiveAgent
 from thinking_system.agent.acting import ActingAgent
 from thinking_system.agent.belief import BeliefAgent
 from thinking_system.agent.unified import UnifiedAgent
+from thinking_system.agent.mega import MegaAgent
 from thinking_system.world.gridworld import GridWorld, default_maze
 from thinking_system.world.latent_model import LatentWorldModel
 from thinking_system.world.partial import PartialGridWorld
 from thinking_system.world.noisy_partial import NoisyPartialWorld, unified_maze
 from thinking_system.world.rooms import rooms_world
+from thinking_system.world.features import CellFeatures, FeatureWorld
 from thinking_system.memory.hierarchical import HierarchicalMemory
 from thinking_system.language.grounding import GoalClassifier, generate_commands, goal_cell
 
@@ -100,4 +102,8 @@ __all__ = [
     # иерархическая память: эпизод → семантика (ориентиры) → навыки
     "HierarchicalMemory",
     "rooms_world",
+    # мега-слияние: JEPA-восприятие + иерархическая память + язык
+    "MegaAgent",
+    "CellFeatures",
+    "FeatureWorld",
 ]
