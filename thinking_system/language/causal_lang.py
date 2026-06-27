@@ -17,7 +17,7 @@ from collections import defaultdict, deque
 from thinking_system.reasoning.causal import SCM
 from thinking_system.language.understanding import tokenize
 
-_MARK = {"вызывает", "вызвать", "причина", "приводит"}
+_MARK = {"вызывает", "вызывают", "вызвать", "причина", "приводит", "приводят"}
 _QSTOP = {"если", "включить", "выключить", "будет", "то", "работает", "ли", "это"}
 
 
@@ -94,7 +94,9 @@ class CausalReader:
         if "если" in toks:                                   # «если X, будет Y?» — вмешательство
             content = [t for t in toks if t not in _QSTOP]
             return self.would(content[0], content[-1])
-        i = next(k for k, t in enumerate(toks) if t in _MARK)  # «X вызывает Y?»
+        i = next((k for k, t in enumerate(toks) if t in _MARK), None)  # «X вызывает Y?»
+        if i is None or not 0 < i < len(toks) - 1:
+            return False                                     # не распознан причинный вопрос
         return self.causes(toks[i - 1], toks[i + 1])
 
     def answer(self, question: str) -> str:
