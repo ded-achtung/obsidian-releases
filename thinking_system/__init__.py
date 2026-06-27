@@ -63,6 +63,9 @@ from thinking_system.reasoning.search_prior import usage_prior, best_first_induc
 from thinking_system.reasoning.grids import grid_primitives, to_grid
 from thinking_system.reasoning.perception import (perception_primitives, gravity, keep_largest,
                                                   denoise, bounding_box, count_nonzero, fill_holes)
+from thinking_system.reasoning.structural import (structural_primitives, complete_symmetry,
+                                                  replicate_by_self, outline, count_objects,
+                                                  most_common_color)
 from thinking_system.agent.qoption import QOption, QOptionLibrary
 from thinking_system.agent.latent_qoption import TileEncoder, LatentQOption, jepa_encoder
 from thinking_system.memory.skill_policies import OptionPolicies
@@ -220,6 +223,13 @@ __all__ = [
     "bounding_box",
     "count_nonzero",
     "fill_holes",
+    # структурно-объектные примитивы: симметрия, фрактал, контур, счёт объектов
+    "structural_primitives",
+    "complete_symmetry",
+    "replicate_by_self",
+    "outline",
+    "count_objects",
+    "most_common_color",
     # мост язык→смысл: понимание задачи (смысл слов из показа → исполнение)
     "GroundedLexicon",
     # мост язык→смысл: понимание утверждений (факты → дедукция → ответ)
