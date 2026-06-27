@@ -60,6 +60,7 @@ from thinking_system.reasoning.stochastic import StochasticGridEnv, Probabilisti
 from thinking_system.reasoning.dsl_growth import ShiftEnv, GrowingLanguage, synthesize_shift
 from thinking_system.reasoning.library_learning import LibraryLearner
 from thinking_system.reasoning.search_prior import usage_prior, best_first_induce, search_cost
+from thinking_system.reasoning.grids import grid_primitives, to_grid
 from thinking_system.agent.qoption import QOption, QOptionLibrary
 from thinking_system.agent.latent_qoption import TileEncoder, LatentQOption, jepa_encoder
 from thinking_system.memory.skill_policies import OptionPolicies
@@ -205,6 +206,9 @@ __all__ = [
     "usage_prior",
     "best_first_induce",
     "search_cost",
+    # общий seed над сетками: тот же ростовой механизм над ARC-доменом
+    "grid_primitives",
+    "to_grid",
     # мост язык→смысл: понимание задачи (смысл слов из показа → исполнение)
     "GroundedLexicon",
     # мост язык→смысл: понимание утверждений (факты → дедукция → ответ)
