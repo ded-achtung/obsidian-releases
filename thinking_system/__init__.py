@@ -78,6 +78,7 @@ from thinking_system.language.reader import LessonReader
 from thinking_system.agent.researcher import Researcher
 from thinking_system.language.study import Textbook
 from thinking_system.language.conditional import ConditionalReader
+from thinking_system.language.planner import TaskPlanner
 from thinking_system.agent.language_options import LanguageOptionAgent
 
 __version__ = "0.0.1"
@@ -209,4 +210,6 @@ __all__ = [
     "Textbook",
     # условные правила: применимость зависит от свойства данных
     "ConditionalReader",
+    # многошаговые задачи: планирование цепочки правил к цели
+    "TaskPlanner",
 ]
