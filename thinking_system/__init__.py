@@ -66,6 +66,9 @@ from thinking_system.reasoning.perception import (perception_primitives, gravity
 from thinking_system.reasoning.structural import (structural_primitives, complete_symmetry,
                                                   replicate_by_self, outline, count_objects,
                                                   most_common_color)
+from thinking_system.reasoning.objects import (object_primitives, gravity_up, gravity_left,
+                                               gravity_right, restore_symmetry, mirror_quad,
+                                               trim_border)
 from thinking_system.agent.qoption import QOption, QOptionLibrary
 from thinking_system.agent.latent_qoption import TileEncoder, LatentQOption, jepa_encoder
 from thinking_system.memory.skill_policies import OptionPolicies
@@ -230,6 +233,14 @@ __all__ = [
     "outline",
     "count_objects",
     "most_common_color",
+    # третий слой: гравитация по сторонам, симметрия под заслонкой, калейдоскоп, рамка
+    "object_primitives",
+    "gravity_up",
+    "gravity_left",
+    "gravity_right",
+    "restore_symmetry",
+    "mirror_quad",
+    "trim_border",
     # мост язык→смысл: понимание задачи (смысл слов из показа → исполнение)
     "GroundedLexicon",
     # мост язык→смысл: понимание утверждений (факты → дедукция → ответ)
