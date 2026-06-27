@@ -51,7 +51,12 @@ def tokenize(text: str) -> list[str]:
 
 
 class BagOfWords:
-    """Мешок слов: текст → бинарный вектор по словарю обучающих команд."""
+    """Мешок слов: текст → бинарный вектор по словарю обучающих команд.
+
+    Признак — ЦЕЛОЕ слово. Невиданное слово (даже морфологический вариант знакомого)
+    молча отбрасывается → нулевой вклад. Поэтому обобщает только на новые КОМБИНАЦИИ
+    знакомых слов, но НЕ на новые словоформы/синонимы вне словаря.
+    """
 
     def __init__(self, texts: list[str]) -> None:
         vocab = sorted({w for t in texts for w in tokenize(t)})
@@ -63,6 +68,44 @@ class BagOfWords:
         for w in tokenize(text):
             if w in self.stoi:
                 v[self.stoi[w]] = 1.0
+        return v
+
+
+def _char_ngrams(word: str, lo: int = 3, hi: int = 5) -> list[str]:
+    """Подсловные char-n-граммы слова с маркерами границ (^слово$)."""
+    s = f"^{word}$"
+    grams = []
+    for n in range(lo, hi + 1):
+        if len(s) < n:
+            continue
+        grams += [s[i : i + n] for i in range(len(s) - n + 1)]
+    return grams
+
+
+class CharNgram:
+    """Подсловный фичеризатор (char-n-граммы) — даёт СМЫСЛ через форму слова.
+
+    Слово представляется мешком своих char-n-грамм (как в fastText, но без хэш-трюка
+    и без предобучения — чисто из обучающих данных). Тогда невиданное слово
+    «northwestern» делит n-граммы с «north»/«west», и классификатор узнаёт его по
+    общим подсловным частям — это обобщение на новые СЛОВОФОРМЫ, а не только на
+    новые комбинации. Узко и честно: «смысл» здесь = близость по морфологии/подсловам,
+    выученная под задачу, а не семантика в полном смысле.
+    """
+
+    def __init__(self, texts: list[str], *, lo: int = 3, hi: int = 5) -> None:
+        self.lo, self.hi = lo, hi
+        grams = {g for t in texts for w in tokenize(t) for g in _char_ngrams(w, lo, hi)}
+        self.stoi = {g: i for i, g in enumerate(sorted(grams))}
+        self.size = len(self.stoi)
+
+    def vec(self, text: str) -> np.ndarray:
+        v = np.zeros(self.size)
+        for w in tokenize(text):
+            for g in _char_ngrams(w, self.lo, self.hi):
+                j = self.stoi.get(g)
+                if j is not None:
+                    v[j] += 1.0
         return v
 
 
