@@ -1,0 +1,71 @@
+"""Самонаращивающаяся библиотека: расти язык из решённых задач, а не кодировать руками.
+
+Урок ARC: кодировать DSL под каждый бенчмарк — тупик. Путь к «любой задаче» — система
+сама РАСТИТ свой язык. Цикл (как в DreamCoder):
+
+  • wake  — решить задачи поиском программ над ТЕКУЩЕЙ библиотекой;
+  • sleep — найти переиспользуемые куски в решениях и добавить их как новые
+            примитивы (сжатие/абстракция).
+
+С маленького ОБЩЕГО набора система над потоком задач (любых доменов) наращивает
+библиотеку и начинает брать всё более сложные задачи при той же глубине поиска —
+без ручного кодирования под домен. Абстракция компонует существующее; для атомарно
+новых операций есть синтез (dsl_growth) — вместе это путь к общности.
+"""
+
+from __future__ import annotations
+
+from collections import Counter
+
+from thinking_system.reasoning.induction import Program, Library, default_primitives
+
+
+class LibraryLearner:
+    """Решает задачи и наращивает библиотеку абстракциями из найденных решений."""
+
+    def __init__(self, seed=None) -> None:
+        self.lib = Library(seed if seed is not None else default_primitives())
+        self.history: list[dict] = []
+
+    def wake(self, tasks: list[list[tuple]], *, max_depth: int = 2) -> dict:
+        """Решить каждую задачу (примеры вход→выход) поиском над текущей библиотекой."""
+        solutions: dict[int, Program] = {}
+        for i, examples in enumerate(tasks):
+            prog = self.lib.induce(examples, max_depth=max_depth)
+            if prog is not None:
+                solutions[i] = prog
+        return solutions
+
+    def _by_name(self, name: str):
+        return next(p for p in self.lib.prims if p.name == name)
+
+    def sleep(self, solutions: dict[int, Program], *, top: int = 1, min_count: int = 2) -> list[str]:
+        """Абстрагировать самые частые/сжимающие подпоследовательности решений в примитивы."""
+        counts: Counter = Counter()
+        for prog in solutions.values():
+            names = [s.name for s in prog.steps]
+            for length in range(2, len(names) + 1):
+                for i in range(len(names) - length + 1):
+                    counts[tuple(names[i:i + length])] += 1
+        # сжатие ≈ выигрыш = (частота−1)·(длина−1); берём непокрытые именами уже существующих абстракций
+        existing = {p.name for p in self.lib.prims}
+        cands = [(seq, c) for seq, c in counts.items() if c >= min_count and "∘".join(seq) not in existing]
+        added: list[str] = []
+        for seq, c in sorted(cands, key=lambda kv: -((kv[1] - 1) * (len(kv[0]) - 1)))[:top]:
+            prog = Program([self._by_name(n) for n in seq])
+            name = "∘".join(seq)
+            self.lib.add_abstraction(name, prog)
+            added.append(name)
+        return added
+
+    def learn(self, tasks: list[list[tuple]], *, rounds: int = 3, max_depth: int = 2, abstractions_per_round: int = 1) -> list[dict]:
+        """Чередовать wake/sleep по потоку задач: библиотека растёт, решается больше."""
+        for r in range(rounds):
+            sols = self.wake(tasks, max_depth=max_depth)
+            self.history.append({"round": r, "solved": len(sols), "library": len(self.lib.prims),
+                                 "abstractions": list(self.lib.abstractions)})
+            self.sleep(sols, top=abstractions_per_round)
+        return self.history
+
+    def solve(self, examples: list[tuple], *, max_depth: int = 2) -> Program | None:
+        return self.lib.induce(examples, max_depth=max_depth)

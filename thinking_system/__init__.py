@@ -58,6 +58,7 @@ from thinking_system.agent.meta_agent import MetaAgent, GridEnv
 from thinking_system.reasoning.hybrid import HybridWorldModel, induce_majority
 from thinking_system.reasoning.stochastic import StochasticGridEnv, ProbabilisticModel
 from thinking_system.reasoning.dsl_growth import ShiftEnv, GrowingLanguage, synthesize_shift
+from thinking_system.reasoning.library_learning import LibraryLearner
 from thinking_system.agent.qoption import QOption, QOptionLibrary
 from thinking_system.agent.latent_qoption import TileEncoder, LatentQOption, jepa_encoder
 from thinking_system.memory.skill_policies import OptionPolicies
@@ -197,6 +198,8 @@ __all__ = [
     "ShiftEnv",
     "GrowingLanguage",
     "synthesize_shift",
+    # самонаращивающаяся библиотека: расти язык из задач (путь к любой задаче)
+    "LibraryLearner",
     # мост язык→смысл: понимание задачи (смысл слов из показа → исполнение)
     "GroundedLexicon",
     # мост язык→смысл: понимание утверждений (факты → дедукция → ответ)
