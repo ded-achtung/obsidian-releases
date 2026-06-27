@@ -26,11 +26,13 @@ _APPLIC_STOP = {"нужна", "нужен", "нужно", "когда", "про�
 class Textbook:
     """Учится по учебнику: операции из примеров, применимость из теории, решает задачи."""
 
-    def __init__(self) -> None:
-        self.lex = GroundedLexicon()
-        self.applicability: dict[str, str] = {}        # слово-примета → операция
+    def __init__(self, *, normalize=None) -> None:
+        self.norm = normalize or (lambda w: w)         # морфология: форма → основа
+        self.lex = GroundedLexicon(normalize=self.norm)
+        self.applicability: dict[str, str] = {}        # основа-примета → операция
         self.exercises: list[str] = []
         self._demos: dict[str, list] = defaultdict(list)
+        self._applic_stop = {self.norm(w) for w in _APPLIC_STOP}
 
     def study(self, text: str) -> dict:
         """Прочитать учебник: примеры → операции, теория → применимость, задачи → список."""
@@ -55,20 +57,21 @@ class Textbook:
                 "задачи": len(self.exercises)}
 
     def learn_applicability(self, line: str) -> None:
-        """Из теории связать слова-приметы с операцией, упомянутой в строке."""
-        toks = tokenize(line)
+        """Из теории связать слова-приметы (по основе) с операцией, упомянутой в строке."""
+        toks = [self.norm(t) for t in tokenize(line)]
         ops = [w for w in toks if w in self.lex.words]
         if not ops:
             return
         op = ops[0]
         for w in toks:
-            if w not in self.lex.words and w not in _APPLIC_STOP:
+            if w not in self.lex.words and w not in self._applic_stop:
                 self.applicability[w] = op
 
     def _ops(self, task: str) -> list[str]:
-        """Какие операции применить к задаче: по названию ИЛИ по примете (в порядке слов)."""
+        """Какие операции применить к задаче: по названию ИЛИ по примете (по основе, в порядке слов)."""
         seq = []
-        for w in tokenize(task):
+        for t in tokenize(task):
+            w = self.norm(t)
             if w in self.lex.words:
                 seq.append(w)
             elif w in self.applicability:

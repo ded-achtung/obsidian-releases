@@ -41,13 +41,14 @@ def extract_arg(text: str):
 class GroundedLexicon:
     """Заземлённый словарь: слово → операция, выученная из показа; разбор и исполнение."""
 
-    def __init__(self, library=None, *, stop: set[str] | None = None) -> None:
+    def __init__(self, library=None, *, stop: set[str] | None = None, normalize=None) -> None:
         self.lib = library or default_library()
         self.words: dict[str, Program] = {}
-        self.stop = stop or set(_STOP)
+        self.normalize = normalize or (lambda w: w)         # морфология: форма слова → основа
+        self.stop = {self.normalize(w) for w in (stop or set(_STOP))}
 
     def _content(self, sentence: str) -> list[str]:
-        return [w for w in tokenize(sentence) if w not in self.stop]
+        return [w for w in (self.normalize(t) for t in tokenize(sentence)) if w not in self.stop]
 
     # ── учить смысл из показа ─────────────────────────────────────────────────────
     def learn(self, word: str, examples: list[tuple]) -> bool:
@@ -55,7 +56,7 @@ class GroundedLexicon:
         prog = self.lib.induce(examples, max_depth=3)
         if prog is None:
             return False
-        self.words[word] = prog
+        self.words[self.normalize(word)] = prog             # ключ — основа (узнаём любые формы)
         return True
 
     def learn_from_demo(self, sentence: str, inp, out) -> str | None:
