@@ -58,6 +58,18 @@ class LibraryLearner:
             added.append(name)
         return added
 
+    def grow_from_solutions(self, programs, *, top: int = 2, min_count: int = 2) -> list[str]:
+        """Вырастить библиотеку из РЕШЕНИЙ, найденных ЛЮБЫМ решателем (не только своим wake).
+
+        Принимает готовые Program — например, найденные best_first_induce на реальном ARC, —
+        и абстрагирует их частые/уникальные подпоследовательности в новые примитивы. Так
+        библиотека растёт из НАСТОЯЩИХ решений системы на реальных задачах, а не только из
+        того, что решил её собственный поиск в wake. При min_count=1 запоминает даже
+        одиночные найденные композиции как «выученные ходы» (память на решённые подзадачи).
+        """
+        sols = {i: p for i, p in enumerate(programs) if p is not None and getattr(p, "steps", None)}
+        return self.sleep(sols, top=top, min_count=min_count)
+
     def learn(self, tasks: list[list[tuple]], *, rounds: int = 3, max_depth: int = 2, abstractions_per_round: int = 1) -> list[dict]:
         """Чередовать wake/sleep по потоку задач: библиотека растёт, решается больше."""
         for r in range(rounds):

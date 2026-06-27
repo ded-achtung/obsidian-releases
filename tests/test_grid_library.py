@@ -6,8 +6,12 @@ from thinking_system.reasoning.grid_seed import full_grid_seed
 from thinking_system.reasoning.perception import bounding_box
 from thinking_system.reasoning.structural import replicate_by_self
 from thinking_system.reasoning.objects import trim_border, mirror_quad
-from thinking_system.reasoning.induction import Library
+from thinking_system.reasoning.induction import Library, Program
 from thinking_system.reasoning.library_learning import LibraryLearner
+
+
+def _prim(seed, name):
+    return next(p for p in seed if p.name == name)
 
 
 def _pad0(core):
@@ -57,3 +61,24 @@ def test_abstraction_cuts_search_depth() -> None:
     assert Library(seed).induce(ex, max_depth=1) is None                  # сырой seed на глубине 1 не берёт
     after = learner.solve(ex, max_depth=1)                                # после роста — берёт на глубине 1
     assert after is not None and after(held) == _combo1(held)
+
+
+def test_grow_from_external_solutions_repeated() -> None:
+    # решения, найденные ВНЕШНИМ решателем (как best_first_induce на реальном ARC)
+    seed = full_grid_seed()
+    learner = LibraryLearner(seed)
+    progs = [Program([_prim(seed, "bbox"), _prim(seed, "fractal")]),
+             Program([_prim(seed, "bbox"), _prim(seed, "fractal")])]      # комбо встретилось дважды
+    added = learner.grow_from_solutions(progs, top=1, min_count=2)
+    assert added == ["bbox∘fractal"]
+    assert "bbox∘fractal" in learner.lib.abstractions
+
+
+def test_grow_from_unique_solutions_as_learned_moves() -> None:
+    # на реальном ARC комбо обычно УНИКАЛЬНЫ — min_count=1 запоминает их как выученные ходы
+    seed = full_grid_seed()
+    learner = LibraryLearner(seed)
+    progs = [Program([_prim(seed, "bbox"), _prim(seed, "fractal")]),
+             Program([_prim(seed, "top_color"), _prim(seed, "mirror_quad")])]
+    added = learner.grow_from_solutions(progs, top=2, min_count=1)
+    assert set(added) == {"bbox∘fractal", "top_color∘mirror_quad"}        # обе уникальные композиции названы
