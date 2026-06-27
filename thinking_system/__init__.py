@@ -74,6 +74,7 @@ from thinking_system.language.doorways import train_doorway_classifier, generate
 from thinking_system.language.understanding import GroundedLexicon
 from thinking_system.language.facts import FactReader
 from thinking_system.language.causal_lang import CausalReader
+from thinking_system.language.reader import LessonReader
 from thinking_system.agent.language_options import LanguageOptionAgent
 
 __version__ = "0.0.1"
@@ -197,4 +198,6 @@ __all__ = [
     "FactReader",
     # мост язык→смысл: понимание причинных утверждений (модель → do/«что если»)
     "CausalReader",
+    # чтение смысла из текста: учиться по книге/уроку со смыслом
+    "LessonReader",
 ]
