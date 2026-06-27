@@ -59,6 +59,17 @@ class GroundedLexicon:
         self.words[self.normalize(word)] = prog             # ключ — основа (узнаём любые формы)
         return True
 
+    def define(self, word: str, op_names: list[str]) -> bool:
+        """Определить новое слово как КОМПОЗИЦИЮ известных операций (абстракция из текста)."""
+        steps = []
+        for name in op_names:
+            key = self.normalize(name)
+            if key not in self.words:
+                return False
+            steps += self.words[key].steps
+        self.words[self.normalize(word)] = Program(steps)
+        return True
+
     def learn_from_demo(self, sentence: str, inp, out) -> str | None:
         """Из демонстрации «предложение + вход→выход» выучить ЕДИНСТВЕННОЕ новое слово."""
         new = [w for w in self._content(sentence) if w not in self.words]

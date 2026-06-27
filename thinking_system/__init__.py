@@ -78,6 +78,7 @@ from thinking_system.language.understanding import GroundedLexicon
 from thinking_system.language.facts import FactReader
 from thinking_system.language.causal_lang import CausalReader
 from thinking_system.language.reader import LessonReader
+from thinking_system.language.definitions import DefinitionReader
 from thinking_system.agent.researcher import Researcher
 from thinking_system.language.study import Textbook
 from thinking_system.language.conditional import ConditionalReader
@@ -217,6 +218,8 @@ __all__ = [
     "CausalReader",
     # чтение смысла из текста: учиться по книге/уроку со смыслом
     "LessonReader",
+    # рост языка из чтения: учебник определяет новые операции через известные
+    "DefinitionReader",
     # замкнутый исследовательский круг: вывод нового, проверка гипотез, пробелы
     "Researcher",
     # учёба по учебнику: правила (что делают) + применимость (когда применять)
