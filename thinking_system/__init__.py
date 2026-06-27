@@ -55,6 +55,7 @@ from thinking_system.reasoning.causal import SCM
 from thinking_system.reasoning.grounded import induce_dynamics, WorldRule, pair_primitives
 from thinking_system.agent.reasoning_agent import ReasoningAgent
 from thinking_system.agent.meta_agent import MetaAgent, GridEnv
+from thinking_system.reasoning.hybrid import HybridWorldModel, induce_majority
 from thinking_system.agent.qoption import QOption, QOptionLibrary
 from thinking_system.agent.latent_qoption import TileEncoder, LatentQOption, jepa_encoder
 from thinking_system.memory.skill_policies import OptionPolicies
@@ -175,4 +176,7 @@ __all__ = [
     # мета-агент: арбитраж рассуждение (model-based) ↔ обучение из опыта (model-free)
     "MetaAgent",
     "GridEnv",
+    # частичное рассуждение: правило для регулярного + заплатки на исключения
+    "HybridWorldModel",
+    "induce_majority",
 ]

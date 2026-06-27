@@ -28,14 +28,16 @@ from thinking_system.language.doorways import train_doorway_classifier, doorway_
 class GridEnv:
     """Среда переходов клетка×действие; опционально — поклеточная перестановка действий."""
 
-    def __init__(self, grid: GridWorld, *, scramble_seed: int | None = None) -> None:
+    def __init__(self, grid: GridWorld, *, scramble_seed: int | None = None, n_scramble: int | None = None) -> None:
         self.g = grid
         self.free = [(s // grid.size, s % grid.size) for s in range(grid.n_states)
                      if (s // grid.size, s % grid.size) not in grid.walls]
         self.perm: dict[tuple[int, int], np.ndarray] | None = None
         if scramble_seed is not None:
             rng = np.random.default_rng(scramble_seed)
-            self.perm = {c: rng.permutation(4) for c in self.free}  # в каждой клетке свой смысл действий
+            cells = self.free if n_scramble is None else \
+                [self.free[i] for i in rng.choice(len(self.free), n_scramble, replace=False)]
+            self.perm = {c: rng.permutation(4) for c in cells}      # перепутанные клетки (все или часть)
 
     def transition(self, s: tuple[int, int], a: int) -> tuple[int, int]:
         if self.perm is not None and s in self.perm:
