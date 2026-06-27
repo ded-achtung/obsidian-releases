@@ -28,9 +28,15 @@ def main():
     free = [(s // grid.size, s % grid.size) for s in range(grid.n_states) if (s // grid.size, s % grid.size) not in grid.walls]
     print(f"▶ Агент в мире-комнатах {grid.size}×{grid.size}; правило динамики выводится ИЗ ЕГО наблюдений\n")
 
+    # наблюдаем, пока не увидим эффект всех 4 действий (иначе правило неполно при
+    # коротком блуждании — индукции нужен ≥1 пример движения на каждое действие)
     steps = 20
     obs = observe(grid, steps, seed=0)
     rules = induce_dynamics(obs)
+    while len(rules) < 4 and steps < 200:
+        steps += 10
+        obs = observe(grid, steps, seed=0)
+        rules = induce_dynamics(obs)
     print(f"1) НАБЛЮДЕНИЯ → ПРАВИЛО: агент прошёл {steps} шагов и вывел эффект каждого действия:")
     for a in sorted(rules):
         print(f"   действие {a} ({grid.ARROWS[a]}) → правило «{rules[a]}»  (из {sum(1 for s, aa, sp in obs if aa == a and sp != s)} примеров)")
@@ -38,10 +44,13 @@ def main():
     wr = WorldRule(grid, rules)
     tot = sum(1 for _ in free) * 4
     ok = sum(wr.predict(s, a) == true_next(grid, s, a) for s in free for a in range(4))
-    seen = {(s, a) for s, a, _ in obs}
+    # честный бейзлайн «табличная память»: для увиденных пар — запомненный исход,
+    # для невиданных — разумный дефолт «остался на месте»; меряем ТУ ЖЕ точность предсказания
+    table = {(s, a): sp for s, a, sp in obs}
+    ok_table = sum(table.get((s, a), s) == true_next(grid, s, a) for s in free for a in range(4))
     print(f"\n2) ОБОБЩЕНИЕ модели на ВЕСЬ мир ({tot} пар клетка×действие):")
     print(f"   индукция правила:   {100 * ok / tot:.0f}% верных предсказаний (из ~5 наблюдений на действие)")
-    print(f"   табличная память:   {100 * len(seen) / tot:.0f}% (знает лишь увиденные пары — остальное мимо)")
+    print(f"   табличная память:   {100 * ok_table / tot:.0f}% (помнит увиденные пары, на остальных дефолт «стоять»)")
 
     print("\n3) ИСПОЛЬЗОВАНИЕ — планирование по ВЫУЧЕННОЙ модели:")
     path = wr.plan((0, 0), (6, 6))

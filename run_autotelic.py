@@ -48,27 +48,43 @@ def main():
     protos = np.array([jepa.encode(np.array([feats.observe(s) for _ in range(40)])).mean(0) for s in free])
     print(f"▶ Шумный мир-комнаты {grid.size}×{grid.size}; {len(free)} клеток; JEPA-восприятие обучено\n")
 
-    def run(intrinsic):
-        ag = AutotelicAgent(grid, jepa, protos, free, intrinsic=intrinsic, seed=0)
+    def run(intrinsic, seed):
+        ag = AutotelicAgent(grid, jepa, protos, free, intrinsic=intrinsic, seed=seed)
         reach, pa = [], []
         for _ in range(120):
             r = ag.episode(FeatureWorld(grid, feats))
             reach.append(r["reachable"]); pa.append(r["perception_acc"])
         return reach, pa
 
-    ri, pai = run(True)
-    rr, _ = run(False)
-    first = lambda r: next((i + 1 for i, x in enumerate(r) if x >= len(free)), -1)
+    first = lambda r: next((i + 1 for i, x in enumerate(r) if x >= len(free)), 999)
 
-    print("1) АВТОНОМНОЕ ОСВОЕНИЕ шумного мира (достижимых клеток; цели ставит сам):")
+    # честно: результат зависит от сида — усредняем по нескольким, а не показываем один
+    seeds = list(range(6))
+    cur_first, rnd_first, perc = [], [], []
+    ri0 = rr0 = None
+    for sd in seeds:
+        ri, pai = run(True, sd)
+        rr, _ = run(False, sd)
+        if sd == 0:
+            ri0, rr0 = ri, rr
+        cur_first.append(first(ri)); rnd_first.append(first(rr)); perc.append(np.mean(pai))
+    wins = sum(c <= r for c, r in zip(cur_first, rnd_first))
+
+    print("1) АВТОНОМНОЕ ОСВОЕНИЕ шумного мира (достижимых клеток; цели ставит сам), сид 0:")
     idx = np.linspace(0, 119, 50).astype(int)
-    print("   любопытство: " + sparkline([ri[i] for i in idx]) + f"   полностью к эпизоду {first(ri)}")
-    print("   случайно:    " + sparkline([rr[i] for i in idx]) + f"   полностью к эпизоду {first(rr)}")
-    print(f"\n2) ВОСПРИЯТИЕ сквозь шум по ходу автономной жизни: {100 * np.mean(pai):.0f}%")
+    print("   любопытство: " + sparkline([ri0[i] for i in idx]) + f"   полностью к эпизоду {first(ri0)}")
+    print("   случайно:    " + sparkline([rr0[i] for i in idx]) + f"   полностью к эпизоду {first(rr0)}")
+    print(f"\n   по {len(seeds)} сидам (эпизод полного освоения, меньше = лучше):")
+    print(f"      любопытство: {cur_first}  (сред. {np.mean(cur_first):.1f})")
+    print(f"      случайно:    {rnd_first}  (сред. {np.mean(rnd_first):.1f})")
+    print(f"      любопытство не хуже случайного: {wins}/{len(seeds)} сидов")
+    print(f"\n2) ВОСПРИЯТИЕ сквозь шум по ходу автономной жизни: {100 * np.mean(perc):.0f}%")
 
     print("\n── Итог ──")
     print("   Без единой внешней цели агент сам ставит задачи и достигает их в шумном мире,")
-    print("   воспринимая позицию своей моделью мира — любопытство движет всем поведением.")
+    print("   воспринимая позицию своей моделью мира. Честно: преимущество любопытства над")
+    print("   случайными самоцелями в среднем есть, но невелико и не на каждом сиде —")
+    print("   часть исследования даёт и простое «пробуй неиспробованное».")
 
 
 if __name__ == "__main__":
