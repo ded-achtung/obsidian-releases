@@ -73,6 +73,7 @@ from thinking_system.language.grounding import GoalClassifier, generate_commands
 from thinking_system.language.doorways import train_doorway_classifier, generate_doorway_commands, doorway_cell, DOORWAYS
 from thinking_system.language.understanding import GroundedLexicon
 from thinking_system.language.facts import FactReader
+from thinking_system.language.causal_lang import CausalReader
 from thinking_system.agent.language_options import LanguageOptionAgent
 
 __version__ = "0.0.1"
@@ -194,4 +195,6 @@ __all__ = [
     "GroundedLexicon",
     # мост язык→смысл: понимание утверждений (факты → дедукция → ответ)
     "FactReader",
+    # мост язык→смысл: понимание причинных утверждений (модель → do/«что если»)
+    "CausalReader",
 ]
