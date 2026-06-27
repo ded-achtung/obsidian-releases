@@ -61,6 +61,8 @@ from thinking_system.reasoning.dsl_growth import ShiftEnv, GrowingLanguage, synt
 from thinking_system.reasoning.library_learning import LibraryLearner
 from thinking_system.reasoning.search_prior import usage_prior, best_first_induce, search_cost
 from thinking_system.reasoning.grids import grid_primitives, to_grid
+from thinking_system.reasoning.perception import (perception_primitives, gravity, keep_largest,
+                                                  denoise, bounding_box, count_nonzero, fill_holes)
 from thinking_system.agent.qoption import QOption, QOptionLibrary
 from thinking_system.agent.latent_qoption import TileEncoder, LatentQOption, jepa_encoder
 from thinking_system.memory.skill_policies import OptionPolicies
@@ -210,6 +212,14 @@ __all__ = [
     # общий seed над сетками: тот же ростовой механизм над ARC-доменом
     "grid_primitives",
     "to_grid",
+    # перцептивные примитивы: ломают инварианты (объекты, счёт, гравитация, заливка)
+    "perception_primitives",
+    "gravity",
+    "keep_largest",
+    "denoise",
+    "bounding_box",
+    "count_nonzero",
+    "fill_holes",
     # мост язык→смысл: понимание задачи (смысл слов из показа → исполнение)
     "GroundedLexicon",
     # мост язык→смысл: понимание утверждений (факты → дедукция → ответ)
