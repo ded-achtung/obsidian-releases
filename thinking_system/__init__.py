@@ -56,6 +56,7 @@ from thinking_system.reasoning.grounded import induce_dynamics, WorldRule, pair_
 from thinking_system.agent.reasoning_agent import ReasoningAgent
 from thinking_system.agent.meta_agent import MetaAgent, GridEnv
 from thinking_system.reasoning.hybrid import HybridWorldModel, induce_majority
+from thinking_system.reasoning.stochastic import StochasticGridEnv, ProbabilisticModel
 from thinking_system.agent.qoption import QOption, QOptionLibrary
 from thinking_system.agent.latent_qoption import TileEncoder, LatentQOption, jepa_encoder
 from thinking_system.memory.skill_policies import OptionPolicies
@@ -179,4 +180,7 @@ __all__ = [
     # частичное рассуждение: правило для регулярного + заплатки на исключения
     "HybridWorldModel",
     "induce_majority",
+    # стохастические миры: вероятностная модель + планирование под неопределённостью
+    "StochasticGridEnv",
+    "ProbabilisticModel",
 ]
