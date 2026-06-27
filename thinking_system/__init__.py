@@ -76,6 +76,7 @@ from thinking_system.language.facts import FactReader
 from thinking_system.language.causal_lang import CausalReader
 from thinking_system.language.reader import LessonReader
 from thinking_system.agent.researcher import Researcher
+from thinking_system.language.study import Textbook
 from thinking_system.agent.language_options import LanguageOptionAgent
 
 __version__ = "0.0.1"
@@ -203,4 +204,6 @@ __all__ = [
     "LessonReader",
     # замкнутый исследовательский круг: вывод нового, проверка гипотез, пробелы
     "Researcher",
+    # учёба по учебнику: правила (что делают) + применимость (когда применять)
+    "Textbook",
 ]
