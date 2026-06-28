@@ -84,15 +84,23 @@ def test_object_recolor_by_property_inferred() -> None:
     assert fn(g) == out
 
 
-def test_local_rule_atom_invented_from_pixels() -> None:
-    """Изобрести АТОМ из пикселей: денойз (одиночный 1 → 0) — функция выучена из примеров."""
+def test_local_rule_rejects_memorization() -> None:
+    """Генерализующий приор: произвольное (незакономерное) отображение ОТВЕРГАЕТСЯ (None)."""
     from thinking_system.reasoning.invent import synth_local_rule
-    g1 = ((0, 0, 0, 0), (0, 1, 0, 0), (0, 0, 0, 0), (0, 0, 0, 1))   # два одиночных 1
-    out1 = ((0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0))  # удалены
-    g2 = ((1, 1, 0), (1, 1, 0), (0, 0, 0))                          # блок 1 — не одиночные
-    out2 = ((1, 1, 0), (1, 1, 0), (0, 0, 0))                        # остаётся
-    fn = synth_local_rule([(g1, out1), (g2, out2)])
+    train = [(((1, 2, 3), (4, 5, 6)), ((9, 8, 7), (6, 5, 4))),       # две несвязанные подгонки
+             (((2, 2, 1), (3, 1, 3)), ((1, 4, 0), (7, 2, 8)))]       # локальный закон не обобщается
+    assert synth_local_rule(train) is None                          # не запоминает
+
+
+def test_local_rule_accepts_recurring_law() -> None:
+    """Закон, повторяющийся в примерах (денойз одиночных), ПРИНИМАЕТСЯ и обобщает (LOO)."""
+    from thinking_system.reasoning.invent import synth_local_rule
+    z = (0, 0, 0, 0, 0)
+    g1 = (z, (0, 1, 0, 1, 0), z, (0, 1, 0, 0, 0), z)                 # одиночные 1 (интерьер)
+    g2 = (z, (0, 0, 1, 0, 0), z, (0, 1, 0, 1, 0), z)                 # одиночные 1 (интерьер)
+    out = (z, z, z, z, z)                                            # все удалены
+    fn = synth_local_rule([(g1, out), (g2, out)])
     assert fn is not None
-    # обобщает: новый одиночный 1 удаляется
-    g3 = ((0, 0, 0), (0, 1, 0), (0, 0, 0))
-    assert fn(g3) == ((0, 0, 0), (0, 0, 0), (0, 0, 0))
+    # обобщает на новый интерьерный одиночный 1
+    g3 = (z, z, (0, 0, 1, 0, 0), z, z)
+    assert fn(g3) == (z, z, z, z, z)

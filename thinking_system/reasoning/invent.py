@@ -211,47 +211,65 @@ def synth_object_recolor(train):
     return None
 
 
+_OOB = -1
+
+
+def _neigh(g, i, j, offs, H, W):
+    return tuple(g[i + di][j + dj] if 0 <= i + di < H and 0 <= j + dj < W else _OOB for di, dj in offs)
+
+
+def _build_table(pairs, offs):
+    """Таблица окрестность→цвет из пар; None, если правило несогласовано."""
+    table = {}
+    for inp, out in pairs:
+        H, W = _shape(inp)
+        for i in range(H):
+            for j in range(W):
+                k = _neigh(inp, i, j, offs, H, W)
+                if table.get(k, out[i][j]) != out[i][j]:
+                    return None
+                table[k] = out[i][j]
+    return table
+
+
+def _apply_table(table, g, offs):
+    H, W = _shape(g)
+    return tuple(tuple(table.get(_neigh(g, i, j, offs, H, W), g[i][j]) for j in range(W)) for i in range(H))
+
+
 def synth_local_rule(train):
     """ИЗОБРЕСТИ АТОМ из пикселей: правило «окрестность клетки → её новый цвет».
 
-    Не параметр в нашей форме и не наш примитив — система строит САМУ функцию из пиксельных
-    данных задачи (как клеточный автомат): таблица окрестность→цвет, выведенная из примеров.
-    Выражает широкий класс (денойз, заливка, рамка, контур, рост по контексту). Берём
-    НАИМЕНЬШУЮ окрестность, согласованную с данными (Оккам — меньше контекста лучше обобщает).
-    Мета-рамка («преобразование локально») наша; сам атом изобретён из восприятия.
+    Система строит САМУ функцию из пикселей задачи (как клеточный автомат). НО с
+    ГЕНЕРАЛИЗУЮЩИМ ПРИОРОМ: атом принимается, только если он ОБОБЩАЕТСЯ на самих
+    обучающих примерах (leave-one-out — правило, выведенное по части пар, верно
+    предсказывает отложенную). Закон переносится между примерами; ПАМЯТЬ — нет.
+    Это Оккам в действии: ищем закон, а не запоминаем показ. Берём меньшую окрестность
+    первой (проще → лучше обобщает). Мета-рамка («локально») наша; атом — из восприятия.
     """
     for inp, out in train:
         if _shape(inp) != _shape(out) or _shape(inp)[0] == 0:
             return None
-    OOB = -1
+    if len(train) < 2:
+        return None                                      # без ≥2 пар обобщение не проверить — честно отказ
     plus = [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]
     full = [(di, dj) for di in (-1, 0, 1) for dj in (-1, 0, 1)]
 
-    def neigh(g, i, j, offs, H, W):
-        return tuple(g[i + di][j + dj] if 0 <= i + di < H and 0 <= j + dj < W else OOB for di, dj in offs)
-
     for offs in (plus, full):                            # от меньшей окрестности к большей
-        table, ok = {}, True
-        for inp, out in train:
-            H, W = _shape(inp)
-            for i in range(H):
-                for j in range(W):
-                    k = neigh(inp, i, j, offs, H, W)
-                    if table.get(k, out[i][j]) != out[i][j]:
-                        ok = False; break
-                    table[k] = out[i][j]
-                if not ok:
-                    break
-            if not ok:
-                break
-        if not ok:
+        table = _build_table(train, offs)
+        if table is None:
             continue
-
-        def fn(g, offs=offs, table=dict(table)):
-            H, W = _shape(g)
-            return tuple(tuple(table.get(neigh(g, i, j, offs, H, W), g[i][j]) for j in range(W)) for i in range(H))
-
+        fn = lambda g, offs=offs, table=table: _apply_table(table, g, offs)
         if all(fn(i) == i for i, _ in train):            # правило ничего не меняет — неинтересно
+            continue
+        # ГЕНЕРАЛИЗУЮЩИЙ ПРИОР: leave-one-out по обучающим парам
+        generalizes = True
+        for h in range(len(train)):
+            sub = _build_table(train[:h] + train[h + 1:], offs)
+            if sub is None or _apply_table(sub, train[h][0], offs) != train[h][1]:
+                generalizes = False
+                break
+        if not generalizes:                              # запоминает, не обобщает → отвергаем
             continue
         if all(fn(i) == o for i, o in train):
             return fn
