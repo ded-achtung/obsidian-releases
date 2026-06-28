@@ -237,6 +237,59 @@ def _apply_table(table, g, offs):
     return tuple(tuple(table.get(_neigh(g, i, j, offs, H, W), g[i][j]) for j in range(W)) for i in range(H))
 
 
+def synth_object_rule(train):
+    """ШИРЕ грамматика: пообъектное правило «свойство объекта → ДЕЙСТВИЕ».
+
+    Действие ∈ {перекрасить в цвет, УДАЛИТЬ (в фон), оставить} — выбирается по свойству
+    объекта, выведенному из данных. Порождает целое семейство операций (денойз удалением
+    мелких, удаление по цвету/размеру, перекраска по рангу), которых нет в отдельных
+    синтезаторах. Конкретное правило строится из задачи; грамматика (свойство×действие)
+    шире, чем список синтезаторов, но всё ещё наша.
+    """
+    from thinking_system.reasoning.objects_arc import objects, background, PROPS
+
+    for bgm in ("common", "zero"):
+        for cb in (False, True):
+            for prop in PROPS + ["color"]:
+                mapping, ok = {}, True
+                for inp, out in train:
+                    if _shape(inp) != _shape(out):
+                        ok = False; break
+                    bg = background(inp) if bgm == "common" else 0
+                    for ob in objects(inp, bg=bg, color_blind=cb):
+                        ocols = {out[r][c] for r, c in ob["cells"]}
+                        if len(ocols) != 1:
+                            ok = False; break
+                        oc = next(iter(ocols))
+                        action = ("delete",) if oc == bg else ("color", oc)
+                        key = ob[prop]
+                        if key in mapping and mapping[key] != action:
+                            ok = False; break
+                        mapping[key] = action
+                    if not ok:
+                        break
+                if not ok or not mapping:
+                    continue
+
+                def fn(g, bgm=bgm, cb=cb, prop=prop, m=dict(mapping)):
+                    bg = background(g) if bgm == "common" else 0
+                    grid = [list(row) for row in g]
+                    for ob in objects(g, bg=bg, color_blind=cb):
+                        act = m.get(ob[prop])
+                        if act is None:
+                            continue
+                        col = bg if act[0] == "delete" else act[1]
+                        for r, c in ob["cells"]:
+                            grid[r][c] = col
+                    return tuple(tuple(row) for row in grid)
+                try:
+                    if any(fn(i) != i for i, _ in train) and all(fn(i) == o for i, o in train):
+                        return fn
+                except Exception:  # noqa: BLE001
+                    continue
+    return None
+
+
 def synth_local_rule(train):
     """ИЗОБРЕСТИ АТОМ из пикселей: правило «окрестность клетки → её новый цвет».
 
@@ -283,6 +336,7 @@ INVENTORS = [
     ("mosaic", synth_mosaic),
     ("select_object", synth_select_object),
     ("object_recolor", synth_object_recolor),
+    ("object_rule", synth_object_rule),
     ("local_rule", synth_local_rule),
 ]
 

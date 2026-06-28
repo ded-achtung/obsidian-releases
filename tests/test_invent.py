@@ -84,6 +84,17 @@ def test_object_recolor_by_property_inferred() -> None:
     assert fn(g) == out
 
 
+def test_object_rule_deletes_by_property() -> None:
+    """Шире грамматика: правило «свойство→действие» с УДАЛЕНИЕМ (денойз мелких объектов)."""
+    from thinking_system.reasoning.invent import synth_object_rule
+    g1 = ((0, 0, 0, 0), (0, 1, 0, 0), (0, 0, 3, 3), (0, 0, 3, 3))   # одиночный 1 + блок 3
+    out1 = ((0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 3, 3), (0, 0, 3, 3))  # одиночный удалён, блок цел
+    fn = synth_object_rule([(g1, out1)])
+    assert fn is not None
+    g2 = ((5, 0, 0), (0, 0, 0), (3, 3, 0), (3, 3, 0))               # новый одиночный (size1) + блок
+    assert fn(g2) == ((0, 0, 0), (0, 0, 0), (3, 3, 0), (3, 3, 0))    # удаляет мелкий по размеру
+
+
 def test_local_rule_rejects_memorization() -> None:
     """Генерализующий приор: произвольное (незакономерное) отображение ОТВЕРГАЕТСЯ (None)."""
     from thinking_system.reasoning.invent import synth_local_rule
