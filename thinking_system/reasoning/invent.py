@@ -145,11 +145,79 @@ def synth_mosaic(train):
     return None
 
 
+def synth_select_object(train):
+    """ИЗОБРЕСТИ правило выбора объекта: вывести (фон, связность, свойство, режим) по данным.
+
+    Пространство правил ПОРОЖДАЕТСЯ (фон×связность×свойство×{max,min,unique}); конкретное
+    правило выбирается тем, что согласуется со всеми парами. Выход = объект, обрезанный
+    до bbox. Это семейство «извлеки особый объект» — много правил, не одно.
+    """
+    from thinking_system.reasoning.objects_arc import objects, select_by, background, PROPS
+
+    for bgm in ("common", "zero"):
+        for cb in (False, True):
+            for prop in PROPS:
+                for mode in ("max", "min", "unique"):
+                    def sel(g, bgm=bgm, cb=cb, prop=prop, mode=mode):
+                        bg = background(g) if bgm == "common" else 0
+                        o = select_by(objects(g, bg=bg, color_blind=cb), prop, mode)
+                        return None if o is None else o["sub"]
+                    try:
+                        if all(sel(i) == o for i, o in train):
+                            return sel
+                    except Exception:  # noqa: BLE001
+                        continue
+    return None
+
+
+def synth_object_recolor(train):
+    """ИЗОБРЕСТИ перекраску объектов по свойству: вывести правило свойство-объекта→цвет."""
+    from thinking_system.reasoning.objects_arc import objects, background, PROPS
+
+    for bgm in ("common", "zero"):
+        for cb in (False, True):
+            for prop in PROPS:
+                mapping, ok = {}, True
+                for inp, out in train:
+                    if _shape(inp) != _shape(out):
+                        ok = False; break
+                    bg = background(inp) if bgm == "common" else 0
+                    for ob in objects(inp, bg=bg, color_blind=cb):
+                        ocols = {out[r][c] for r, c in ob["cells"]}
+                        if len(ocols) != 1:
+                            ok = False; break
+                        oc = next(iter(ocols)); key = ob[prop]
+                        if key in mapping and mapping[key] != oc:
+                            ok = False; break
+                        mapping[key] = oc
+                    if not ok:
+                        break
+                if not ok or not mapping or all(False for _ in [0]):
+                    continue
+
+                def fn(g, bgm=bgm, cb=cb, prop=prop, m=dict(mapping)):
+                    bg = background(g) if bgm == "common" else 0
+                    grid = [list(row) for row in g]
+                    for ob in objects(g, bg=bg, color_blind=cb):
+                        if ob[prop] in m:
+                            for r, c in ob["cells"]:
+                                grid[r][c] = m[ob[prop]]
+                    return tuple(tuple(row) for row in grid)
+                try:
+                    if all(fn(i) == o for i, o in train):
+                        return fn
+                except Exception:  # noqa: BLE001
+                    continue
+    return None
+
+
 INVENTORS = [
     ("colormap", synth_colormap),
     ("upscale", synth_upscale),
     ("downscale", synth_downscale),
     ("mosaic", synth_mosaic),
+    ("select_object", synth_select_object),
+    ("object_recolor", synth_object_recolor),
 ]
 
 
