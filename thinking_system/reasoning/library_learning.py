@@ -11,6 +11,12 @@
 библиотеку и начинает брать всё более сложные задачи при той же глубине поиска —
 без ручного кодирования под домен. Абстракция компонует существующее; для атомарно
 новых операций есть синтез (dsl_growth) — вместе это путь к общности.
+
+ЧЕСТНО о том, что даёт рост: на числах/списках он реально РАСШИРЯЕТ охват (задачи
+глубины 3 становятся достижимы за глубину 2). На сетках/ARC — это в основном выигрыш
+в ЭФФЕКТИВНОСТИ (семейство решается на глубине 1 вместо 2), а не в охвате: что вообще
+решаемо, ограничено ШИРИНОЙ примитивов (какие восприятия есть), а не глубиной поиска.
+Рост библиотеки ускоряет, но не расширяет — расширяет новый слой примитивов.
 """
 
 from __future__ import annotations
@@ -37,19 +43,30 @@ class LibraryLearner:
         return solutions
 
     def _by_name(self, name: str):
-        return next(p for p in self.lib.prims if p.name == name)
+        return next((p for p in self.lib.prims if p.name == name), None)
 
     def sleep(self, solutions: dict[int, Program], *, top: int = 1, min_count: int = 2) -> list[str]:
-        """Абстрагировать самые частые/сжимающие подпоследовательности решений в примитивы."""
+        """Абстрагировать самые частые/сжимающие подпоследовательности решений в примитивы.
+
+        Частота = число РАЗНЫХ решений, содержащих комбо (а не число вхождений): повтор
+        биграммы ВНУТРИ одного решения считается один раз, поэтому min_count=2 значит
+        «встретилось в двух разных решениях», а не «дважды в одном».
+        """
+        existing = {p.name for p in self.lib.prims}
         counts: Counter = Counter()
         for prog in solutions.values():
             names = [s.name for s in prog.steps]
-            for length in range(2, len(names) + 1):
-                for i in range(len(names) - length + 1):
-                    counts[tuple(names[i:i + length])] += 1
-        # сжатие ≈ выигрыш = (частота−1)·(длина−1); берём непокрытые именами уже существующих абстракций
-        existing = {p.name for p in self.lib.prims}
-        cands = [(seq, c) for seq, c in counts.items() if c >= min_count and "∘".join(seq) not in existing]
+            # подпоследовательности этого решения, БЕЗ повторного счёта внутри него
+            seqs = {tuple(names[i:i + length])
+                    for length in range(2, len(names) + 1)
+                    for i in range(len(names) - length + 1)}
+            for seq in seqs:
+                counts[seq] += 1
+        # сжатие ≈ выигрыш = (частота−1)·(длина−1); только комбо из ИЗВЕСТНЫХ примитивов,
+        # ещё не покрытые именем существующей абстракции (программы «любого» решателя с
+        # чужими примитивами просто пропускаются — без падения).
+        cands = [(seq, c) for seq, c in counts.items()
+                 if c >= min_count and "∘".join(seq) not in existing and all(n in existing for n in seq)]
         added: list[str] = []
         for seq, c in sorted(cands, key=lambda kv: -((kv[1] - 1) * (len(kv[0]) - 1)))[:top]:
             prog = Program([self._by_name(n) for n in seq])

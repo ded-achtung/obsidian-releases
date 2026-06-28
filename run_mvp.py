@@ -73,10 +73,16 @@ def main() -> None:
     print(f"  начальная ошибка        : {s['initial_error']:.5f}")
     print(f"  финальная ошибка        : {s['final_error']:.5f}")
     print(f"  baseline (persistence)  : {s['baseline_final']:.5f}")
-    print(f"  улучшение               : {s['improvement_pct']:.1f}%")
-    print(f"  обходит baseline        : {'да' if s['beats_baseline'] else 'нет'}")
+    print(f"  baseline (лин. экстрап.) : {s['linear_final']:.5f}")
+    print(f"  улучшение vs нач. ошибка : {s['improvement_pct']:.1f}%")
+    print(f"  обходит persistence     : {'да' if s['beats_baseline'] else 'нет'}")
+    print(f"  обходит лин. экстрап.   : {'да' if s['beats_linear'] else 'нет'}")
     halve = s["steps_to_halve_error"]
     print(f"  шагов до −50% ошибки     : {int(halve) if halve == halve else '—'}")
+    print()
+    print("  ⚠ persistence — слабейшая планка; «улучшение %» зависит от уровня шума")
+    print("    (≈99% при noise=0.02, ~67% при noise=0.5) и от случайного старта сети.")
+    print("    Линейная экстраполяция — честная планка без обучения.")
 
     if args.plot:
         path = maybe_save_plot(tracker)

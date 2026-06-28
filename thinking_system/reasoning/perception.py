@@ -97,7 +97,14 @@ def count_nonzero(g):
 
 
 def fill_holes(g):
-    """Залить замкнутый фон (нули, не достижимые от рамки) цветом-меткой (max-цвет)."""
+    """Залить замкнутый фон (нули, не достижимые от рамки) ЦВЕТОМ ОКРУЖЕНИЯ.
+
+    Каждая замкнутая область нулей заполняется наиболее частым цветом своей границы
+    (стандартное ARC-семейство «закрасить внутренность цветом рамки»), а не глобальным
+    max-цветом — иначе посторонний яркий цвет в углу испортил бы заливку.
+    """
+    from collections import Counter
+
     rows, cols = _dims(g)
     border_bg = [[False] * cols for _ in range(rows)]
     stack = []
@@ -115,8 +122,28 @@ def fill_holes(g):
             ny, nx = y + dy, x + dx
             if 0 <= ny < rows and 0 <= nx < cols and g[ny][nx] == 0 and not border_bg[ny][nx]:
                 border_bg[ny][nx] = True; stack.append((ny, nx))
-    fill = max((v for row in g for v in row), default=0)
-    return to_grid([[fill if (g[r][c] == 0 and not border_bg[r][c]) else g[r][c] for c in range(cols)] for r in range(rows)])
+
+    out = [list(row) for row in g]
+    seen = [[False] * cols for _ in range(rows)]
+    for r in range(rows):
+        for c in range(cols):
+            if g[r][c] != 0 or border_bg[r][c] or seen[r][c]:
+                continue
+            comp, neigh, st = [], Counter(), [(r, c)]      # компонента замкнутых нулей
+            seen[r][c] = True
+            while st:
+                y, x = st.pop(); comp.append((y, x))
+                for dy, dx in _N4:
+                    ny, nx = y + dy, x + dx
+                    if 0 <= ny < rows and 0 <= nx < cols:
+                        if g[ny][nx] == 0 and not border_bg[ny][nx] and not seen[ny][nx]:
+                            seen[ny][nx] = True; st.append((ny, nx))
+                        elif g[ny][nx] != 0:
+                            neigh[g[ny][nx]] += 1            # цвет границы области
+            fill = neigh.most_common(1)[0][0] if neigh else 0
+            for y, x in comp:
+                out[y][x] = fill
+    return to_grid(out)
 
 
 def perception_primitives() -> list[Primitive]:

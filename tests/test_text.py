@@ -36,7 +36,9 @@ def test_load_md(tmp_path: Path) -> None:
 
 
 def test_load_pdf_roundtrip(tmp_path: Path) -> None:
-    fitz = __import__("fitz")
+    import pytest
+
+    fitz = pytest.importorskip("fitz")  # опциональный extra [text]; без него — skip, не fail
     doc = fitz.open()
     doc.new_page().insert_text((72, 72), "Lemma one plus one equals two")
     pdf = tmp_path / "b.pdf"

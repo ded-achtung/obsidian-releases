@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 from thinking_system.reasoning.induction import Primitive
-from thinking_system.reasoning.grids import to_grid
+from thinking_system.reasoning.grids import to_grid, flip_h, flip_v
 from thinking_system.reasoning.perception import _dims
 
 
@@ -99,7 +99,13 @@ def restore_symmetry(g):
     Для каждого цвета-гипотезы заслонки заполняем его клетки по симметриям, которые
     уважает видимая часть, и берём цвет, дающий больше всего заполнений. Так система
     сама решает, что закрывает узор, и восстанавливает его — без подсказки извне.
+
+    Если узор УЖЕ симметричен по горизонтали и вертикали, восстанавливать нечего:
+    возвращаем без изменений (иначе «диагональная» симметрия квадрата ложно приняла бы
+    обычный цвет-узор за заслонку и переписала корректные клетки).
     """
+    if flip_h(g) == g and flip_v(g) == g:
+        return g
     best, best_filled = None, 0
     for hole in sorted({v for row in g for v in row}):
         out, filled = _restore_for_hole(g, hole)

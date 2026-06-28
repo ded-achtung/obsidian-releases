@@ -71,7 +71,12 @@ class PredictiveLoop:
         self.tracker = tracker if tracker is not None else MetricsTracker()
 
     def run(self, stream: Stream, n_steps: int) -> MetricsTracker:
-        """Прогнать цикл на n_steps шагах потока и вернуть собранные метрики."""
+        """Прогнать цикл на n_steps шагах потока и вернуть собранные метрики.
+
+        Метрики сбрасываются в начале: повторный run() на том же объекте даёт
+        чистый трекер, а не дописывает к предыдущему прогону.
+        """
+        self.tracker = MetricsTracker(window=self.tracker.window)
         history: deque[np.ndarray] = deque(maxlen=self.context_len + 1)
 
         for t, obs in enumerate(islice(iter(stream), n_steps)):
@@ -88,6 +93,12 @@ class PredictiveLoop:
             predicted = self.predictor.predict(context)
             err = _mse(predicted, target)
             baseline = _mse(history[-2], target)          # persistence: next ≈ prev
+            # Более сильный baseline без обучения: линейная экстраполяция 2·z₋₁ − z₋₂.
+            # На гладком потоке она почти равна обученной модели — честная планка.
+            if len(history) >= 3:
+                linear = _mse(2.0 * history[-2] - history[-3], target)
+            else:
+                linear = baseline
 
             self.memory.add(Experience(context.copy(), target.copy(), t))
 
@@ -96,6 +107,6 @@ class PredictiveLoop:
                 contexts, targets = self.memory.sample(self.batch_size)
                 loss = self.predictor.update(contexts, targets)
 
-            self.tracker.record(t=t, error=err, baseline=baseline, loss=loss)
+            self.tracker.record(t=t, error=err, baseline=baseline, loss=loss, linear=linear)
 
         return self.tracker

@@ -58,9 +58,13 @@ def run_code(src: str) -> tuple[bool, str]:
     except SyntaxError as e:
         return False, f"синтаксис: {e}"
     buf = io.StringIO()
+    # Песочница: только безопасные builtins (корпус использует print/range), без
+    # open/exec/eval/__import__ и т.п. — на случай, если модель сгенерирует не то.
+    bi = __builtins__ if isinstance(__builtins__, dict) else vars(__builtins__)
+    safe_builtins = {k: bi[k] for k in ("print", "range", "len", "str", "int", "list", "enumerate", "sum") if k in bi}
     try:
         with contextlib.redirect_stdout(buf):
-            exec(compile(src, "<generated>", "exec"), {})
+            exec(compile(src, "<generated>", "exec"), {"__builtins__": safe_builtins})
     except Exception as e:  # noqa: BLE001 — это демо, выполняем недоверенный сгенерированный код
         return False, f"ошибка выполнения: {e}"
     return True, buf.getvalue()

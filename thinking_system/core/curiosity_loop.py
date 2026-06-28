@@ -98,7 +98,19 @@ class ActiveInferenceLoop:
         return v
 
     def epistemic_values(self) -> np.ndarray:
-        """Эпистемическая ценность по каналам = значимый learning progress (нормир.)."""
+        """Эпистемическая ценность по каналам = learning progress, прошедший гейт (нормир.).
+
+        Гейт сравнивает старую и новую половины окна ошибок: падение должно быть
+        и абсолютно заметным (≥ lp_floor), и большим относительно ДИСПЕРСИИ ошибок
+        канала (drop/SE ≥ lp_z). Высокая дисперсия шумного канала → большой SE → гейт
+        его глушит (так снимается «шумный телевизор» с БЕЛЫМ шумом).
+
+        ЧЕСТНО О ГРАНИЦАХ: это ЭВРИСТИЧЕСКИЙ гейт, а НЕ строгий тест значимости. Ошибки —
+        автокоррелированный ряд, поэтому SE по сырым выборкам занижен; гейт надёжно
+        отсекает каналы с высокодисперсным белым шумом (как в нашей среде), но низко-
+        дисперсный автокоррелированный ДРЕЙФ в принципе может его обмануть. Для строгости
+        нужен тренд-тест с поправкой на автокорреляцию (Newey–West / Mann–Kendall).
+        """
         epi = np.zeros(self.K)
         for k in range(self.K):
             hist = self._err_hist[k]
@@ -106,12 +118,13 @@ class ActiveInferenceLoop:
                 continue  # данных мало → epi=0; softmax даст равномерную разведку
             arr = np.fromiter(hist, dtype=np.float64)
             half = arr.size // 2
-            old, new = arr[:half], arr[half:]
+            old, new = arr[:half], arr[arr.size - half:]  # симметричные половины (корректно при нечётном размере)
             drop = float(old.mean() - new.mean())  # падение ошибки = прогресс
             if drop < self.lp_floor:
                 continue
-            se = float(np.sqrt(old.var() / half + new.var() / half)) + 1e-8
-            if drop / se >= self.lp_z:  # значимо относительно дисперсии канала → не шум
+            # SE разности средних по каждой половине своего размера (old.size == new.size == half).
+            se = float(np.sqrt(old.var() / old.size + new.var() / new.size)) + 1e-8
+            if drop / se >= self.lp_z:  # значимо относительно дисперсии канала → не белый шум
                 epi[k] = drop
         m = epi.max()
         if m > 0:
@@ -119,7 +132,15 @@ class ActiveInferenceLoop:
         return epi
 
     def run(self, env: Environment, n_steps: int) -> CuriosityTracker:
-        """Прогнать цикл с любопытством на n_steps шагах среды."""
+        """Прогнать цикл с любопытством на n_steps шагах среды.
+
+        Сбрасывает накопленное состояние в начале — повторный run() на том же объекте
+        начинается «с чистого листа», без контаминации предыдущим прогоном.
+        """
+        self._history = [deque(maxlen=self.context_len + 1) for _ in range(self.K)]
+        self._visits = np.zeros(self.K, dtype=int)
+        self._err_hist = [deque(maxlen=self.lp_window) for _ in range(self.K)]
+        self.tracker = CuriosityTracker(n_actions=self.K)
         env.reset()
         for t in range(n_steps):
             a = self.policy.select_action(self.epistemic_values())

@@ -6,8 +6,10 @@
 X (do), и различает «видеть» (корреляция) от «делать» (причинность). Контрфактику —
 «что было бы с этим случаем» — считает через ту же модель (SCM из reasoning.causal).
 
-Контролируемая грамматика: «X вызывает Y» (утверждение); «X вызывает Y?» (есть ли
-причинный путь); «если X, будет Y?» (вмешательство do(X)).
+Контролируемая грамматика: «X вызывает Y» / «X приводит к Y» (утверждение, предлог
+после маркера пропускается); «X вызывает Y?» (есть ли причинный путь); «если X,
+будет Y?» (вмешательство do(X)). За пределами этих шаблонов разбор не гарантируется —
+это узкая контролируемая грамматика, а не полный NLP.
 """
 
 from __future__ import annotations
@@ -19,6 +21,17 @@ from thinking_system.language.understanding import tokenize
 
 _MARK = {"вызывает", "вызывают", "вызвать", "причина", "приводит", "приводят"}
 _QSTOP = {"если", "включить", "выключить", "будет", "то", "работает", "ли", "это"}
+# предлоги после маркера («приводит К раку») пропускаем, чтобы ребро шло на СЛЕДСТВИЕ, а не на предлог
+_PREP = {"к", "ко", "на", "в", "во", "из", "за", "у", "от", "о", "об", "со", "с", "по"}
+
+
+def _cause_effect(toks: list[str], i: int) -> tuple[str, str]:
+    """X и Y вокруг маркера на позиции i, пропуская предлоги (X слева, Y справа)."""
+    left = [t for t in toks[:i] if t not in _PREP]
+    right = [t for t in toks[i + 1:] if t not in _PREP]
+    x = left[-1] if left else toks[i - 1]
+    y = right[0] if right else toks[i + 1]
+    return x, y
 
 
 class CausalReader:
@@ -32,7 +45,7 @@ class CausalReader:
         """«X вызывает Y» → причинное ребро X→Y."""
         toks = tokenize(statement)
         i = next(k for k, t in enumerate(toks) if t in _MARK)
-        x, y = toks[i - 1], toks[i + 1]
+        x, y = _cause_effect(toks, i)
         if x not in self.parents[y]:
             self.parents[y].append(x)
         self.vars |= {x, y}
@@ -97,7 +110,8 @@ class CausalReader:
         i = next((k for k, t in enumerate(toks) if t in _MARK), None)  # «X вызывает Y?»
         if i is None or not 0 < i < len(toks) - 1:
             return False                                     # не распознан причинный вопрос
-        return self.causes(toks[i - 1], toks[i + 1])
+        x, y = _cause_effect(toks, i)
+        return self.causes(x, y)
 
     def answer(self, question: str) -> str:
         return "да" if self.ask(question) else "нет"

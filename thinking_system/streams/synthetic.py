@@ -46,20 +46,23 @@ class SyntheticStream(Stream):
         self._n_modes = n_modes
         self._dt = dt
         self._noise = noise
+        self._seed = seed
         self._freqs = rng.uniform(freq_lo, freq_hi, size=n_modes)
         self._phases = rng.uniform(0.0, 2.0 * np.pi, size=n_modes)
         self._proj = rng.standard_normal((2 * n_modes, obs_dim)) / np.sqrt(2 * n_modes)
-        self._rng = rng
 
     @property
     def obs_dim(self) -> int:
         return self._obs_dim
 
     def __iter__(self) -> Iterator[np.ndarray]:
+        # Свежий ГСЧ шума на каждую итерацию → повторная итерация одного объекта
+        # детерминирована (одинаковый поток наблюдений при одном seed).
+        rng = np.random.default_rng(self._seed)
         t = 0.0
         while True:
             angles = self._freqs * t + self._phases
             latent = np.concatenate([np.cos(angles), np.sin(angles)])
-            obs = latent @ self._proj + self._noise * self._rng.standard_normal(self._obs_dim)
+            obs = latent @ self._proj + self._noise * rng.standard_normal(self._obs_dim)
             yield obs
             t += self._dt

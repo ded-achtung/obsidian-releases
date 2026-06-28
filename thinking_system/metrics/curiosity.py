@@ -47,7 +47,12 @@ class CuriosityTracker:
         return counts / total if total else counts.astype(float)
 
     def final_error(self, *, last_k: int = 30) -> np.ndarray:
-        """Средняя ошибка предсказания по каждому каналу на последних last_k его визитах."""
+        """Средняя ошибка предсказания по каждому каналу на последних last_k его визитах.
+
+        Это IN-SAMPLE ошибка (те же предсказания, что служили сигналом обучения), а не
+        ошибка на отложенной выборке — мера «насколько освоен канал», не строгого
+        обобщения. Для held-out оценки см. ContinualEvaluator.
+        """
         out = np.full(self.n_actions, np.nan)
         for k in range(self.n_actions):
             errs = [e for a, e in zip(self.actions, self.errors) if a == k and e is not None]

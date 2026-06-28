@@ -26,6 +26,7 @@ def transpose(g: Grid) -> Grid:
 
 
 def rot90(g: Grid) -> Grid:
+    """Поворот на 90° ПО ЧАСОВОЙ стрелке (= np.rot90(k=-1), не CCW-конвенция numpy)."""
     return tuple(zip(*g[::-1]))
 
 

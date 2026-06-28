@@ -28,12 +28,14 @@ class MetricsTracker:
     steps: list[int] = field(default_factory=list)
     errors: list[float] = field(default_factory=list)
     baselines: list[float] = field(default_factory=list)
+    linears: list[float] = field(default_factory=list)
     losses: list[float] = field(default_factory=list)
 
-    def record(self, *, t: int, error: float, baseline: float, loss: float | None) -> None:
+    def record(self, *, t: int, error: float, baseline: float, loss: float | None, linear: float | None = None) -> None:
         self.steps.append(t)
         self.errors.append(error)
         self.baselines.append(baseline)
+        self.linears.append(linear if linear is not None else baseline)
         if loss is not None:
             self.losses.append(loss)
 
@@ -53,23 +55,28 @@ class MetricsTracker:
 
         roll = self.rolling()
         roll_base = self.rolling(self.baselines)
+        roll_lin = self.rolling(self.linears)
         seg = max(1, roll.size // 10)  # усредняем по первым/последним 10 %
 
         initial = float(np.mean(roll[:seg]))
         final = float(np.mean(roll[-seg:]))
         baseline_final = float(np.mean(roll_base[-seg:]))
+        linear_final = float(np.mean(roll_lin[-seg:]))
 
         # Шаги до 50 %-сокращения начальной ошибки (прокси sample-efficiency).
+        # rolling() в режиме 'valid' лагает на window-1; возвращаем индекс в пространстве ШАГОВ.
         target = initial * 0.5
         below = np.where(roll <= target)[0]
-        steps_to_halve = float(below[0]) if below.size else float("nan")
+        steps_to_halve = float(below[0] + self.window - 1) if below.size else float("nan")
 
         return {
             "n": float(len(self.errors)),
             "initial_error": initial,
             "final_error": final,
             "baseline_final": baseline_final,
+            "linear_final": linear_final,
             "improvement_pct": float(100.0 * (initial - final) / initial) if initial > 0 else 0.0,
             "beats_baseline": float(final < baseline_final),
+            "beats_linear": float(final < linear_final),
             "steps_to_halve_error": steps_to_halve,
         }
