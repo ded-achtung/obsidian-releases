@@ -211,6 +211,53 @@ def synth_object_recolor(train):
     return None
 
 
+def synth_local_rule(train):
+    """ИЗОБРЕСТИ АТОМ из пикселей: правило «окрестность клетки → её новый цвет».
+
+    Не параметр в нашей форме и не наш примитив — система строит САМУ функцию из пиксельных
+    данных задачи (как клеточный автомат): таблица окрестность→цвет, выведенная из примеров.
+    Выражает широкий класс (денойз, заливка, рамка, контур, рост по контексту). Берём
+    НАИМЕНЬШУЮ окрестность, согласованную с данными (Оккам — меньше контекста лучше обобщает).
+    Мета-рамка («преобразование локально») наша; сам атом изобретён из восприятия.
+    """
+    for inp, out in train:
+        if _shape(inp) != _shape(out) or _shape(inp)[0] == 0:
+            return None
+    OOB = -1
+    plus = [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]
+    full = [(di, dj) for di in (-1, 0, 1) for dj in (-1, 0, 1)]
+
+    def neigh(g, i, j, offs, H, W):
+        return tuple(g[i + di][j + dj] if 0 <= i + di < H and 0 <= j + dj < W else OOB for di, dj in offs)
+
+    for offs in (plus, full):                            # от меньшей окрестности к большей
+        table, ok = {}, True
+        for inp, out in train:
+            H, W = _shape(inp)
+            for i in range(H):
+                for j in range(W):
+                    k = neigh(inp, i, j, offs, H, W)
+                    if table.get(k, out[i][j]) != out[i][j]:
+                        ok = False; break
+                    table[k] = out[i][j]
+                if not ok:
+                    break
+            if not ok:
+                break
+        if not ok:
+            continue
+
+        def fn(g, offs=offs, table=dict(table)):
+            H, W = _shape(g)
+            return tuple(tuple(table.get(neigh(g, i, j, offs, H, W), g[i][j]) for j in range(W)) for i in range(H))
+
+        if all(fn(i) == i for i, _ in train):            # правило ничего не меняет — неинтересно
+            continue
+        if all(fn(i) == o for i, o in train):
+            return fn
+    return None
+
+
 INVENTORS = [
     ("colormap", synth_colormap),
     ("upscale", synth_upscale),
@@ -218,6 +265,7 @@ INVENTORS = [
     ("mosaic", synth_mosaic),
     ("select_object", synth_select_object),
     ("object_recolor", synth_object_recolor),
+    ("local_rule", synth_local_rule),
 ]
 
 

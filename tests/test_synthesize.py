@@ -5,19 +5,21 @@ from __future__ import annotations
 from thinking_system.reasoning.synthesize import synthesize
 
 
-def test_composes_transform_then_inferred_recolor() -> None:
-    """Схема «flip_h ▸ colormap» должна РОДИТЬСЯ поиском (её никто не писал как целое)."""
-    def task(g):
-        flipped = tuple(r[::-1] for r in g)
-        return tuple(tuple(v + 4 for v in r) for r in flipped)   # flip_h затем +4 ко всем цветам
-    train = [(((1, 2, 3), (4, 5, 6)), task(((1, 2, 3), (4, 5, 6)))),
-             (((2, 1, 0), (3, 3, 1)), task(((2, 1, 0), (3, 3, 1))))]
+def test_composes_crop_then_inferred_recolor() -> None:
+    """Схема «crop ▸ colormap» должна РОДИТЬСЯ поиском (меняет форму → не локальное правило)."""
+    def task(g):                                              # обрезать до объекта, затем +4
+        cells = [(r, c) for r, row in enumerate(g) for c, v in enumerate(row) if v != 0]
+        r0 = min(r for r, _ in cells); r1 = max(r for r, _ in cells)
+        c0 = min(c for _, c in cells); c1 = max(c for _, c in cells)
+        return tuple(tuple(g[r][c] + 4 for c in range(c0, c1 + 1)) for r in range(r0, r1 + 1))
+    g1 = ((0, 0, 0, 0), (0, 1, 2, 0), (0, 3, 4, 0), (0, 0, 0, 0))
+    g2 = ((0, 0, 0), (0, 2, 1), (0, 4, 3))
+    train = [(g1, task(g1)), (g2, task(g2))]
     label, fn = synthesize(train, max_prefix=2)
     assert fn is not None
-    assert "flip_h" in label                                  # префикс найден поиском
-    # обобщает на новый вход (цвета из числа уже виденных — colormap не выдумывает новых)
-    g = ((6, 5), (0, 1))
-    assert fn(g) == task(g)
+    assert "▸" in label and "crop" in label                   # реально скомпонована (≥2)
+    g3 = ((0, 0, 0, 0), (0, 4, 3, 0), (0, 2, 1, 0), (0, 0, 0, 0))
+    assert fn(g3) == task(g3)                                  # обобщает (цвета виденные)
 
 
 def test_pure_deterministic_composition() -> None:

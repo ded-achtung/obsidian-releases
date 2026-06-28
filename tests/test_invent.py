@@ -82,3 +82,17 @@ def test_object_recolor_by_property_inferred() -> None:
     fn = synth_object_recolor([(g, out)])
     assert fn is not None
     assert fn(g) == out
+
+
+def test_local_rule_atom_invented_from_pixels() -> None:
+    """Изобрести АТОМ из пикселей: денойз (одиночный 1 → 0) — функция выучена из примеров."""
+    from thinking_system.reasoning.invent import synth_local_rule
+    g1 = ((0, 0, 0, 0), (0, 1, 0, 0), (0, 0, 0, 0), (0, 0, 0, 1))   # два одиночных 1
+    out1 = ((0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0))  # удалены
+    g2 = ((1, 1, 0), (1, 1, 0), (0, 0, 0))                          # блок 1 — не одиночные
+    out2 = ((1, 1, 0), (1, 1, 0), (0, 0, 0))                        # остаётся
+    fn = synth_local_rule([(g1, out1), (g2, out2)])
+    assert fn is not None
+    # обобщает: новый одиночный 1 удаляется
+    g3 = ((0, 0, 0), (0, 1, 0), (0, 0, 0))
+    assert fn(g3) == ((0, 0, 0), (0, 0, 0), (0, 0, 0))
