@@ -17,3 +17,6 @@ books/*.epub
 books/*.mobi
 books/*.djvu
 books/*.txt
+
+# Кэш датасета ARC (скачивается run_arc.py; не коммитим)
+.arc_cache/
