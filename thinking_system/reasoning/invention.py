@@ -181,12 +181,17 @@ def _eq(a: Any, b: Any) -> bool:
         return False
 
 
-def _fit_branch(pairs: list[tuple[Any, Any]]) -> tuple[Callable[[Any], Any], str] | None:
-    """Подогнать ветку: тождество, константа или изобретённая прямолинейная операция."""
+def _fit_branch(pairs: list[tuple[Any, Any]], *, allow_singleton_const: bool = False) -> tuple[Callable[[Any], Any], str] | None:
+    """Подогнать ветку: тождество, константа или изобретённая прямолинейная операция.
+
+    allow_singleton_const: разрешить константу из 1 примера (для ячеек-одиночек вроде
+    «x=0», где у предиката единственный возможный вход — 1 примера достаточно).
+    """
     outs = [o for _, o in pairs]
     if all(_eq(i, o) for i, o in pairs):
         return (lambda x: x), "x"
-    if len(pairs) >= 2 and all(_eq(o, outs[0]) for o in outs):  # постоянная ветка (≥2 — подтверждение)
+    min_const = 1 if allow_singleton_const else 2
+    if len(pairs) >= min_const and all(_eq(o, outs[0]) for o in outs):  # постоянная ветка (подтверждение)
         c = outs[0]
         return (lambda x, c=c: c), str(c)
     prim = invent_primitive(pairs)                       # аффинная/квадратичная/поэлементная
@@ -232,6 +237,113 @@ def invent_conditional(examples: list[tuple[Any, Any]]) -> Primitive | None:
     return None
 
 
+# ── СЛЕДУЮЩИЙ СЛОЙ: СТРУКТУРНЫЕ операции над списками (перестановки/период/выбор) ──
+
+def invent_structural(examples: list[tuple[Any, Any]]) -> Primitive | None:
+    """Вывести длино-ОТНОСИТЕЛЬНОЕ структурное преобразование списка из наблюдений.
+
+    Не значения элементов (это поэлементная), а ПОЗИЦИИ/длина: разворот, циклический
+    сдвиг, повтор (период), прореживание, выбор префикса/суффикса. Параметрические
+    правила (сдвиг k, повтор m, шаг s, n штук) подтверждаются на ≥2 РАЗНЫХ длинах —
+    иначе это запоминание одной перестановки, а не правило.
+    """
+    ins = [i for i, _ in examples]
+    outs = [o for _, o in examples]
+    if not ins or not all(isinstance(i, list) for i in ins) or not all(isinstance(o, list) for o in outs):
+        return None
+    if len(examples) < 2:
+        return None
+    distinct_lens = len({len(i) for i in ins})
+    maxlen = max((len(i) for i in ins), default=0)
+
+    templates: list[tuple[str, Callable[[list], list], bool]] = [
+        ("разворот", lambda xs: xs[::-1], False),
+        ("сорт↑", lambda xs: sorted(xs), False),
+        ("сорт↓", lambda xs: sorted(xs, reverse=True), False),
+    ]
+    for m in range(2, 5):
+        templates.append((f"повтор×{m}", (lambda xs, m=m: xs * m), True))
+    for k in range(1, maxlen):
+        templates.append((f"сдвиг←{k}", (lambda xs, k=k: (xs[k % len(xs):] + xs[:k % len(xs)]) if xs else xs), True))
+    for s in range(2, maxlen + 1):
+        templates.append((f"каждый {s}-й", (lambda xs, s=s: xs[::s]), True))
+    for n in range(1, maxlen):
+        templates.append((f"первые {n}", (lambda xs, n=n: xs[:n]), True))
+        templates.append((f"последние {n}", (lambda xs, n=n: xs[-n:]), True))
+        templates.append((f"без первых {n}", (lambda xs, n=n: xs[n:]), True))
+
+    for name, fn, parametric in templates:
+        if parametric and distinct_lens < 2:
+            continue  # параметрическое правило корроборируем на ≥2 разных длинах
+        try:
+            if all(fn(i) == o for i, o in examples) and not all(_eq(i, o) for i, o in examples):
+                return Primitive(name, _mk_list_fn(fn))
+        except (TypeError, ValueError, IndexError, ZeroDivisionError):
+            continue
+    return None
+
+
+# ── СЛЕДУЮЩИЙ СЛОЙ: МНОГОВЕТОЧНОЕ условие (например sign: <0 / =0 / >0) ─────────────
+
+def _partition_families(ins: list[Any]) -> list[tuple[str, list[tuple[str, Callable[[Any], bool], bool]]]]:
+    """Семейства ВЗАИМОИСКЛЮЧАЮЩИХ предикатов, покрывающих входы (для N ветвей)."""
+    fams: list[tuple[str, list[tuple[str, Callable[[Any], bool], bool]]]] = []
+    if ins and all(_is_int(i) for i in ins):
+        fams.append(("знаку", [("<0", lambda x: x < 0, False),
+                               ("=0", lambda x: x == 0, True),   # ячейка-одиночка
+                               (">0", lambda x: x > 0, False)]))
+        for m in (2, 3):
+            fams.append((f"mod {m}", [(f"≡{r}", (lambda x, r=r, m=m: x % m == r), False) for r in range(m)]))
+    return fams
+
+
+def invent_multibranch(examples: list[tuple[Any, Any]]) -> Primitive | None:
+    """Собрать МНОГОВЕТОЧНУЮ операцию из взаимоисключающих предикатов (≥3 активных ветки).
+
+    Каждая ветка выведена из своей подвыборки (с подтверждением). Так из данных
+    рождается, например, знак числа: <0→-1, =0→0, >0→1.
+    """
+    if len(examples) < 4:
+        return None
+    ins = [i for i, _ in examples]
+    for fname, cells in _partition_families(ins):
+        branches: list[tuple[str, Callable[[Any], bool], tuple[Callable[[Any], Any], str] | None]] = []
+        active = 0
+        ok = True
+        for label, pred, singleton in cells:
+            try:
+                pairs = [(i, o) for i, o in examples if pred(i)]
+            except (TypeError, ValueError, ZeroDivisionError):
+                ok = False
+                break
+            if not pairs:
+                branches.append((label, pred, None))
+                continue
+            fb = _fit_branch(pairs, allow_singleton_const=singleton)
+            if fb is None:
+                ok = False
+                break
+            branches.append((label, pred, fb))
+            active += 1
+        if not ok or active < 3:                         # «много» = ≥3 активных ветки (2-way — отдельно)
+            continue
+
+        def fn(x, branches=branches):
+            for _label, pred, fb in branches:
+                if fb is not None and pred(x):
+                    return fb[0](x)
+            raise TypeError  # вход вне покрытых случаев
+
+        try:
+            if all(_eq(fn(i), o) for i, o in examples):
+                body = "; ".join(f"{lab}→{fb[1]}" for lab, _p, fb in branches if fb)
+                return Primitive(f"по {fname}: {body}", fn)
+        except (TypeError, ValueError, IndexError, ZeroDivisionError):
+            continue
+    return None
+
+
 def invent(examples: list[tuple[Any, Any]]) -> Primitive | None:
-    """Изобрести операцию из наблюдений: прямолинейную, иначе — условную (ветвящуюся)."""
-    return invent_primitive(examples) or invent_conditional(examples)
+    """Изобрести операцию из наблюдений: прямолинейную → структурную → условную → многоветочную."""
+    return (invent_primitive(examples) or invent_structural(examples)
+            or invent_conditional(examples) or invent_multibranch(examples))

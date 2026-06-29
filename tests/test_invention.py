@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from thinking_system.reasoning.invention import invent_primitive, invent_conditional
+from thinking_system.reasoning.invention import (invent_primitive, invent_conditional,
+                                                 invent_structural, invent_multibranch)
 from thinking_system.system import ThinkingSystem
 
 
@@ -47,6 +48,38 @@ def test_invents_conditional_branch_transform() -> None:
 def test_conditional_rejects_arbitrary_data() -> None:
     # 4 произвольные точки нельзя честно объяснить ветвлением (ветки не подтверждены).
     assert invent_conditional([(1, 5), (2, 9), (3, 2), (4, 7)]) is None
+
+
+def test_invents_structural_rotate() -> None:
+    # Длино-относительный циклический сдвиг (не значение, а ПОЗИЦИЯ), на ≥2 длинах.
+    p = invent_structural([([1, 2, 3], [2, 3, 1]), ([4, 5, 6, 7], [5, 6, 7, 4])])
+    assert p is not None and p.fn([9, 8]) == [8, 9]
+
+
+def test_invents_structural_repeat_period() -> None:
+    p = invent_structural([([1, 2], [1, 2, 1, 2]), ([3, 4, 5], [3, 4, 5, 3, 4, 5])])  # повтор×2
+    assert p is not None and p.fn([7]) == [7, 7]
+
+
+def test_invents_structural_stride() -> None:
+    p = invent_structural([([1, 2, 3, 4], [1, 3]), ([5, 6, 7, 8, 9, 10], [5, 7, 9])])  # каждый 2-й
+    assert p is not None and p.fn([0, 1, 2, 3, 4]) == [0, 2, 4]
+
+
+def test_structural_needs_two_lengths_to_corroborate() -> None:
+    # Параметрическое правило на ОДНОЙ длине не подтверждено → честное None.
+    assert invent_structural([([1, 2, 3], [2, 3, 1]), ([4, 5, 6], [5, 6, 4])]) is None
+    assert invent_structural([([1, 2, 3], [9, 9, 9]), ([4, 5], [1, 2])]) is None       # вне шаблонов
+
+
+def test_invents_multibranch_sign() -> None:
+    # МНОГОВЕТОЧНОЕ (3 ветки): знак числа, выведенный из наблюдений.
+    p = invent_multibranch([(-3, -1), (-2, -1), (5, 1), (7, 1), (0, 0)])
+    assert p is not None and p.fn(-9) == -1 and p.fn(4) == 1 and p.fn(0) == 0
+
+
+def test_multibranch_rejects_arbitrary_data() -> None:
+    assert invent_multibranch([(1, 5), (2, 9), (3, 2), (4, 7)]) is None
 
 
 def test_system_solve_falls_back_to_invention_and_grows_library() -> None:
