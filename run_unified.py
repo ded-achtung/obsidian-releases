@@ -42,10 +42,6 @@ def main():
     test_acc = np.mean([perception.predict(world.observe_at(s)[None])[0] == pattern_classes[local_pattern(grid, s)] for s in free for _ in range(20)])
     print(f"1) ВОСПРИЯТИЕ: распознаёт обзор сквозь шум с точностью {test_acc * 100:.0f}%")
 
-    # обучаем ЯЗЫК
-    goal_clf = GoalClassifier(BagOfWords([t for t, _ in generate_commands()]))
-    goal_clf.fit(generate_commands(), epochs=300)
-
     agent = UnifiedAgent(grid, perception, pattern_classes, seed=0)
     rng = np.random.default_rng(0)
     commands = [
@@ -55,6 +51,13 @@ def main():
         ("reach the upper left", 0),
         ("walk to the lower right corner", 3),
     ]
+
+    # обучаем ЯЗЫК на командах БЕЗ тестовых (честный held-out: тест-команды не видны при обучении;
+    # словарь закрытый — тест = новые комбинации знакомых слов)
+    test_texts = {t for t, _ in commands}
+    train_cmds = [c for c in generate_commands() if c[0] not in test_texts]
+    goal_clf = GoalClassifier(BagOfWords([t for t, _ in train_cmds]))
+    goal_clf.fit(train_cmds, epochs=300)
 
     print("\n2) КОМАНДА → (восприятие+вера) → ДЕЙСТВИЕ под шумом и частичной наблюдаемостью:")
     print(f"   {'команда':<32}{'цель':<14}{'итог':>22}")
@@ -84,7 +87,7 @@ def main():
         from thinking_system.language.grounding import PLACES
         print(f"   {text:<32}{PLACES[cls][0]:<14}{f'{succ}/8 дошёл, ~{avg:.0f} шаг':>22}  {'✓' if ok else '✗'}")
 
-    print(f"\n   язык понят верно: {ok_total}/{len(commands)} команд")
+    print(f"\n   язык понят верно: {ok_total}/{len(commands)} команд (held-out: тест-команды не было при обучении)")
     print("\n── Итог ──")
     print("   Один агент: понимает команду словами, распознаёт зашумлённый обзор обученным")
     print("   восприятием, ведёт веру о позиции под частичной наблюдаемостью и доходит до")

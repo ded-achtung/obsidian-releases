@@ -23,8 +23,8 @@ def main():
 
     agent = ReasoningAgent(grid, seed=0)
 
-    # 1) выучить мир рассуждением — из горстки наблюдений
-    n = agent.learn_world(20)
+    # 1) выучить мир рассуждением — наблюдая, пока модель не станет полной (все 4 действия)
+    n = agent.learn_world_until_complete(start=20)
     print(f"1) ВЫУЧИЛ ДИНАМИКУ РАССУЖДЕНИЕМ: {n}/4 правила из {agent.observations} наблюдений")
     for a in sorted(agent.model.rules):
         print(f"   {grid.ARROWS[a]} → «{agent.model.rules[a]}»")

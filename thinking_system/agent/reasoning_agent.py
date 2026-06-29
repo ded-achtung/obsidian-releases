@@ -41,11 +41,22 @@ class ReasoningAgent:
 
     # ── 1) выучить мир рассуждением ──────────────────────────────────────────────
     def learn_world(self, steps: int = 20) -> int:
-        """Понаблюдать несколько шагов и ИНДУЦИРОВАТЬ правило динамики на каждое действие."""
+        """Понаблюдать `steps` шагов и ИНДУЦИРОВАТЬ правило динамики на каждое действие."""
         obs = observe(self.g, steps, seed=self.seed)
-        self.observations += steps
+        self.observations = steps
         self.model = WorldRule(self.g, induce_dynamics(obs))
         return len(self.model.rules)
+
+    def learn_world_until_complete(self, *, start: int = 20, step: int = 10, cap: int = 200) -> int:
+        """Наблюдать всё дольше, пока не выведен эффект всех 4 действий (или до cap).
+
+        Короткое случайное блуждание из угла может не задеть какое-то действие —
+        тогда правило неполно. Наблюдаем ровно столько, сколько нужно для полной модели.
+        """
+        n = self.learn_world(start)
+        while n < 4 and self.observations < cap:
+            n = self.learn_world(self.observations + step)
+        return n
 
     # ── 2) полная модель из малого: прогнать правило по всему миру ────────────────
     def imagined_transitions(self):

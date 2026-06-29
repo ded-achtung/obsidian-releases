@@ -1,0 +1,353 @@
+"""Изобретение примитива ИЗ ДАННЫХ задачи (а не из готового словаря).
+
+Потолок фиксированного DSL: примитивы беспараметрические (`color+1`, фиксированный
+`fractal`). Но многие ARC-задачи — это операция, ПАРАМЕТРЫ которой надо вывести из
+самой задачи: какая именно перекраска, какой масштаб, какое замощение. Здесь —
+СИНТЕЗАТОРЫ: каждый читает пары вход→выход, СТРОИТ конкретную функцию (новую теорию),
+проверяет её на ВСЕХ обучающих парах и, если согласована, возвращает — это и есть
+«построить теорию из данных и проверить её», а не перебор готового.
+
+Идея — параметризованные операции из обзора решателей ARC (Recolor(map), Scale(k),
+Tile) и ShapeCoder (абстракции из неструктурированных примитивов).
+"""
+
+from __future__ import annotations
+
+from collections import Counter
+
+Grid = tuple
+
+
+def _shape(g: Grid) -> tuple[int, int]:
+    return (len(g), len(g[0]) if g else 0)
+
+
+def synth_colormap(train: list[tuple[Grid, Grid]]):
+    """Вывести ПОКЛЕТОЧНУЮ перекраску цвет→цвет (если форма сохраняется)."""
+    mapping: dict[int, int] = {}
+    for inp, out in train:
+        if _shape(inp) != _shape(out) or _shape(inp)[0] == 0:
+            return None
+        for ri, ro in zip(inp, out):
+            for a, b in zip(ri, ro):
+                if a in mapping and mapping[a] != b:
+                    return None
+                mapping[a] = b
+    if all(v == k for k, v in mapping.items()):     # тождество — неинтересно
+        return None
+    m = dict(mapping)
+    return lambda g: tuple(tuple(m.get(v, v) for v in r) for r in g)
+
+
+def _factors(train, *, up):
+    f = None
+    for inp, out in train:
+        ir, ic = _shape(inp); orr, oc = _shape(out)
+        big, small = ((orr, oc), (ir, ic)) if up else ((ir, ic), (orr, oc))
+        if small[0] == 0 or small[1] == 0 or big[0] % small[0] or big[1] % small[1]:
+            return None
+        a, b = big[0] // small[0], big[1] // small[1]
+        if (a, b) == (1, 1) or a < 1 or b < 1:
+            return None
+        if f is None:
+            f = (a, b)
+        elif f != (a, b):
+            return None
+    return f
+
+
+def synth_upscale(train):
+    """Вывести целочисленный масштаб ВВЕРХ и правило заполнения (репликация / замощение)."""
+    f = _factors(train, up=True)
+    if f is None:
+        return None
+    a, b = f
+
+    def replicate(g):                                # каждая клетка → блок a×b того же цвета
+        out = []
+        for row in g:
+            br = [[] for _ in range(a)]
+            for v in row:
+                for k in range(a):
+                    br[k].extend([v] * b)
+            out += [tuple(x) for x in br]
+        return tuple(out)
+
+    def tile(g):                                     # периодическое замощение a×b копий
+        ir, ic = _shape(g)
+        return tuple(tuple(g[r % ir][c % ic] for c in range(b * ic)) for r in range(a * ir))
+
+    for fn in (replicate, tile):
+        if all(fn(i) == o for i, o in train):
+            return fn
+    return None
+
+
+def synth_downscale(train):
+    """Вывести масштаб ВНИЗ: каждый блок → один цвет (мажоритарный / единственный непустой)."""
+    f = _factors(train, up=False)
+    if f is None:
+        return None
+    a, b = f
+
+    def reduce_block(pick):
+        def fn(g):
+            ir, ic = _shape(g); orr, oc = ir // a, ic // b
+            res = []
+            for R in range(orr):
+                row = []
+                for C in range(oc):
+                    vals = [g[R * a + dr][C * b + dc] for dr in range(a) for dc in range(b)]
+                    row.append(pick(vals))
+                res.append(tuple(row))
+            return tuple(res)
+        return fn
+
+    majority = reduce_block(lambda v: Counter(v).most_common(1)[0][0])
+    nonzero = reduce_block(lambda v: next((x for x in v if x != 0), 0))
+    for fn in (majority, nonzero):
+        if all(fn(i) == o for i, o in train):
+            return fn
+    return None
+
+
+def synth_mosaic(train):
+    """Вывести мозаику a×b из копий входа, преобразованных {id, flip_h, flip_v, rot180}.
+
+    Покрывает «вход рядом со своим зеркалом» (1×2, 2×1) и калейдоскоп (2×2): для каждой
+    ячейки сетки a×b подбирается преобразование, согласованное со всеми обучающими парами.
+    """
+    from itertools import product
+
+    f = _factors(train, up=True)
+    if f not in {(1, 2), (2, 1), (2, 2)}:
+        return None
+    a, b = f
+    fh = lambda g: tuple(r[::-1] for r in g)
+    fv = lambda g: g[::-1]
+    r180 = lambda g: tuple(r[::-1] for r in g[::-1])
+    ops = {"id": lambda g: g, "fh": fh, "fv": fv, "r180": r180}
+    names = list(ops)
+
+    def make(layout):                                # layout[r][c] = имя операции для ячейки
+        def fn(g):
+            rows = []
+            for r in range(a):
+                strips = [ops[layout[r * b + c]](g) for c in range(b)]
+                rows += [tuple(sum((s[i] for s in strips), ())) for i in range(len(strips[0]))]
+            return tuple(rows)
+        return fn
+
+    for combo in product(names, repeat=a * b):
+        fn = make(combo)
+        if all(fn(i) == o for i, o in train):
+            return fn
+    return None
+
+
+def synth_select_object(train):
+    """ИЗОБРЕСТИ правило выбора объекта: вывести (фон, связность, свойство, режим) по данным.
+
+    Пространство правил ПОРОЖДАЕТСЯ (фон×связность×свойство×{max,min,unique}); конкретное
+    правило выбирается тем, что согласуется со всеми парами. Выход = объект, обрезанный
+    до bbox. Это семейство «извлеки особый объект» — много правил, не одно.
+    """
+    from thinking_system.reasoning.objects_arc import objects, select_by, background, PROPS
+
+    for bgm in ("common", "zero"):
+        for cb in (False, True):
+            for prop in PROPS:
+                for mode in ("max", "min", "unique"):
+                    def sel(g, bgm=bgm, cb=cb, prop=prop, mode=mode):
+                        bg = background(g) if bgm == "common" else 0
+                        o = select_by(objects(g, bg=bg, color_blind=cb), prop, mode)
+                        return None if o is None else o["sub"]
+                    try:
+                        if all(sel(i) == o for i, o in train):
+                            return sel
+                    except Exception:  # noqa: BLE001
+                        continue
+    return None
+
+
+def synth_object_recolor(train):
+    """ИЗОБРЕСТИ перекраску объектов по свойству: вывести правило свойство-объекта→цвет."""
+    from thinking_system.reasoning.objects_arc import objects, background, PROPS
+
+    for bgm in ("common", "zero"):
+        for cb in (False, True):
+            for prop in PROPS:
+                mapping, ok = {}, True
+                for inp, out in train:
+                    if _shape(inp) != _shape(out):
+                        ok = False; break
+                    bg = background(inp) if bgm == "common" else 0
+                    for ob in objects(inp, bg=bg, color_blind=cb):
+                        ocols = {out[r][c] for r, c in ob["cells"]}
+                        if len(ocols) != 1:
+                            ok = False; break
+                        oc = next(iter(ocols)); key = ob[prop]
+                        if key in mapping and mapping[key] != oc:
+                            ok = False; break
+                        mapping[key] = oc
+                    if not ok:
+                        break
+                if not ok or not mapping or all(False for _ in [0]):
+                    continue
+
+                def fn(g, bgm=bgm, cb=cb, prop=prop, m=dict(mapping)):
+                    bg = background(g) if bgm == "common" else 0
+                    grid = [list(row) for row in g]
+                    for ob in objects(g, bg=bg, color_blind=cb):
+                        if ob[prop] in m:
+                            for r, c in ob["cells"]:
+                                grid[r][c] = m[ob[prop]]
+                    return tuple(tuple(row) for row in grid)
+                try:
+                    if all(fn(i) == o for i, o in train):
+                        return fn
+                except Exception:  # noqa: BLE001
+                    continue
+    return None
+
+
+_OOB = -1
+
+
+def _neigh(g, i, j, offs, H, W):
+    return tuple(g[i + di][j + dj] if 0 <= i + di < H and 0 <= j + dj < W else _OOB for di, dj in offs)
+
+
+def _build_table(pairs, offs):
+    """Таблица окрестность→цвет из пар; None, если правило несогласовано."""
+    table = {}
+    for inp, out in pairs:
+        H, W = _shape(inp)
+        for i in range(H):
+            for j in range(W):
+                k = _neigh(inp, i, j, offs, H, W)
+                if table.get(k, out[i][j]) != out[i][j]:
+                    return None
+                table[k] = out[i][j]
+    return table
+
+
+def _apply_table(table, g, offs):
+    H, W = _shape(g)
+    return tuple(tuple(table.get(_neigh(g, i, j, offs, H, W), g[i][j]) for j in range(W)) for i in range(H))
+
+
+def synth_object_rule(train):
+    """ШИРЕ грамматика: пообъектное правило «свойство объекта → ДЕЙСТВИЕ».
+
+    Действие ∈ {перекрасить в цвет, УДАЛИТЬ (в фон), оставить} — выбирается по свойству
+    объекта, выведенному из данных. Порождает целое семейство операций (денойз удалением
+    мелких, удаление по цвету/размеру, перекраска по рангу), которых нет в отдельных
+    синтезаторах. Конкретное правило строится из задачи; грамматика (свойство×действие)
+    шире, чем список синтезаторов, но всё ещё наша.
+    """
+    from thinking_system.reasoning.objects_arc import objects, background, PROPS
+
+    for bgm in ("common", "zero"):
+        for cb in (False, True):
+            for prop in PROPS + ["color"]:
+                mapping, ok = {}, True
+                for inp, out in train:
+                    if _shape(inp) != _shape(out):
+                        ok = False; break
+                    bg = background(inp) if bgm == "common" else 0
+                    for ob in objects(inp, bg=bg, color_blind=cb):
+                        ocols = {out[r][c] for r, c in ob["cells"]}
+                        if len(ocols) != 1:
+                            ok = False; break
+                        oc = next(iter(ocols))
+                        action = ("delete",) if oc == bg else ("color", oc)
+                        key = ob[prop]
+                        if key in mapping and mapping[key] != action:
+                            ok = False; break
+                        mapping[key] = action
+                    if not ok:
+                        break
+                if not ok or not mapping:
+                    continue
+
+                def fn(g, bgm=bgm, cb=cb, prop=prop, m=dict(mapping)):
+                    bg = background(g) if bgm == "common" else 0
+                    grid = [list(row) for row in g]
+                    for ob in objects(g, bg=bg, color_blind=cb):
+                        act = m.get(ob[prop])
+                        if act is None:
+                            continue
+                        col = bg if act[0] == "delete" else act[1]
+                        for r, c in ob["cells"]:
+                            grid[r][c] = col
+                    return tuple(tuple(row) for row in grid)
+                try:
+                    if any(fn(i) != i for i, _ in train) and all(fn(i) == o for i, o in train):
+                        return fn
+                except Exception:  # noqa: BLE001
+                    continue
+    return None
+
+
+def synth_local_rule(train):
+    """ИЗОБРЕСТИ АТОМ из пикселей: правило «окрестность клетки → её новый цвет».
+
+    Система строит САМУ функцию из пикселей задачи (как клеточный автомат). НО с
+    ГЕНЕРАЛИЗУЮЩИМ ПРИОРОМ: атом принимается, только если он ОБОБЩАЕТСЯ на самих
+    обучающих примерах (leave-one-out — правило, выведенное по части пар, верно
+    предсказывает отложенную). Закон переносится между примерами; ПАМЯТЬ — нет.
+    Это Оккам в действии: ищем закон, а не запоминаем показ. Берём меньшую окрестность
+    первой (проще → лучше обобщает). Мета-рамка («локально») наша; атом — из восприятия.
+    """
+    for inp, out in train:
+        if _shape(inp) != _shape(out) or _shape(inp)[0] == 0:
+            return None
+    if len(train) < 2:
+        return None                                      # без ≥2 пар обобщение не проверить — честно отказ
+    plus = [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]
+    full = [(di, dj) for di in (-1, 0, 1) for dj in (-1, 0, 1)]
+
+    for offs in (plus, full):                            # от меньшей окрестности к большей
+        table = _build_table(train, offs)
+        if table is None:
+            continue
+        fn = lambda g, offs=offs, table=table: _apply_table(table, g, offs)
+        if all(fn(i) == i for i, _ in train):            # правило ничего не меняет — неинтересно
+            continue
+        # ГЕНЕРАЛИЗУЮЩИЙ ПРИОР: leave-one-out по обучающим парам
+        generalizes = True
+        for h in range(len(train)):
+            sub = _build_table(train[:h] + train[h + 1:], offs)
+            if sub is None or _apply_table(sub, train[h][0], offs) != train[h][1]:
+                generalizes = False
+                break
+        if not generalizes:                              # запоминает, не обобщает → отвергаем
+            continue
+        if all(fn(i) == o for i, o in train):
+            return fn
+    return None
+
+
+INVENTORS = [
+    ("colormap", synth_colormap),
+    ("upscale", synth_upscale),
+    ("downscale", synth_downscale),
+    ("mosaic", synth_mosaic),
+    ("select_object", synth_select_object),
+    ("object_recolor", synth_object_recolor),
+    ("object_rule", synth_object_rule),
+    ("local_rule", synth_local_rule),
+]
+
+
+def invent(train: list[tuple[Grid, Grid]]):
+    """Перебрать синтезаторы; вернуть (имя, функция) для ПЕРВОГО, согласованного со всеми парами."""
+    for name, synth in INVENTORS:
+        try:
+            fn = synth(train)
+        except Exception:  # noqa: BLE001
+            fn = None
+        if fn is not None and all(fn(i) == o for i, o in train):
+            return name, fn
+    return None, None

@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import glob
+import re
 from pathlib import Path
 
 import numpy as np
@@ -143,7 +144,11 @@ def demo_autocomplete(code_model):
 
 def main():
     print("обучаю две модели (код / русский)…\n")
-    code = "\n\n".join(Path(p).read_text(encoding="utf-8") for p in sorted(glob.glob("thinking_system/**/*.py", recursive=True)))
+    # ВАЖНО: .py-файлы двуязычны (русские докстринги + Python). Чтобы «код vs русский»
+    # был ЧЕСТНЫМ различием, из корпуса кода убираем не-ASCII (русские комментарии) —
+    # иначе «модель кода» учит и русский, и классификация/«чужой язык» теряют смысл.
+    raw = "\n\n".join(Path(p).read_text(encoding="utf-8") for p in sorted(glob.glob("thinking_system/**/*.py", recursive=True)))
+    code = "\n".join(re.sub(r"[^\x00-\x7f]", "", ln) for ln in raw.splitlines())
     code_model = train(code, updates=30000, seed=0)
     ru_text = load_book("research/brain-inspired-thinking-system.md")
     ru_model = train(ru_text, updates=18000, seed=0)
