@@ -35,7 +35,8 @@ from thinking_system.language.facts import FactReader
 from thinking_system.language.reader import LessonReader
 from thinking_system.language.understanding import GroundedLexicon, tokenize
 from thinking_system.reasoning.induction import Library, Program, default_primitives
-from thinking_system.reasoning.invention import invent_primitive
+from thinking_system.reasoning.invention import invent
+from thinking_system.reasoning.predicates import induce_predicate
 from thinking_system.text.vocab import ByteVocab
 from thinking_system.world.gridworld import default_maze
 
@@ -123,8 +124,12 @@ class ThinkingSystem:
 
     # ── ИЗОБРЕТЕНИЕ: новая операция ИЗ НАБЛЮДЕНИЙ (не из воздуха) → в библиотеку ─────
     def invent_operation(self, examples: list[tuple]) -> "Primitive | None":  # type: ignore[name-defined]
-        """Подогнать грунтованный шаблон к примерам; родившуюся операцию — в библиотеку."""
-        prim = invent_primitive(examples)
+        """Подогнать грунтованный шаблон к примерам; родившуюся операцию — в библиотеку.
+
+        Сначала прямолинейная регулярность (аффинная/квадратичная/поэлементная),
+        затем — УСЛОВНАЯ операция «если P(x): f иначе g», тоже выведенная из данных.
+        """
+        prim = invent(examples)
         if prim is None:
             self.episode.append(f"invent: из {len(examples)} примеров регулярность не найдена")
             return None
@@ -135,6 +140,14 @@ class ThinkingSystem:
         self.episode.append(f"invent: новая операция «{prim.name}» из наблюдений")
         return prim
 
+    # ── ИНДУКЦИЯ ПРЕДИКАТА: выучить УСЛОВИЕ из размеченных примеров (не хардкод) ─────
+    def learn_predicate(self, labeled: list[tuple]) -> str | None:
+        """Вывести предикат «вход → да/нет» из примеров; вернуть его имя (или None)."""
+        res = induce_predicate(labeled)
+        name = res[0] if res is not None else None
+        self.episode.append(f"learn_predicate: {len(labeled)} примеров → {name}")
+        return name
+
     # ── ПЕРЕНОС рассуждение→язык: назвать найденный навык (станет словом и примитивом) ─
     def name_skill(self, word: str, examples: list[tuple], *, max_depth: int = 3) -> bool:
         """Найти навык поиском и НАЗВАТЬ его: слово языка + примитив библиотеки.
@@ -144,7 +157,7 @@ class ThinkingSystem:
         """
         prog = self.library.induce(examples, max_depth=max_depth)
         if prog is None:                               # не вышло композицией — изобрести из данных
-            prim = invent_primitive(examples)
+            prim = invent(examples)                    # прямолинейная ИЛИ условная (ветвящаяся)
             prog = Program([prim]) if prim is not None else None
         if prog is None:
             self.episode.append(f"name_skill: {word!r} — не выведено")

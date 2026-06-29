@@ -24,6 +24,7 @@ from fractions import Fraction as F
 from typing import Any, Callable
 
 from thinking_system.reasoning.induction import Primitive
+from thinking_system.reasoning.predicates import candidates_for
 
 
 def _is_int(v: Any) -> bool:
@@ -31,7 +32,13 @@ def _is_int(v: Any) -> bool:
 
 
 def _fit_affine(pts: list[tuple[int, int]]) -> tuple[int, int] | None:
-    """Подогнать целочисленную аффинную a·x+b ко ВСЕМ точкам (или None)."""
+    """Подогнать целочисленную аффинную a·x+b ко ВСЕМ точкам (или None).
+
+    Требует ≥3 точек с РАЗНЫМ x: 2 определяют прямую, 3-я её ПОДТВЕРЖДАЕТ. Иначе это
+    подгонка под данные (любые 2 точки лежат на какой-то прямой), а не правило.
+    """
+    if len({x for x, _ in pts}) < 3:
+        return None
     base = None
     for i in range(len(pts)):
         for j in range(i + 1, len(pts)):
@@ -51,7 +58,13 @@ def _fit_affine(pts: list[tuple[int, int]]) -> tuple[int, int] | None:
 
 
 def _fit_quadratic(pts: list[tuple[int, int]]) -> tuple[int, int, int] | None:
-    """Подогнать целочисленную a·x²+b·x+c ко ВСЕМ точкам (нужно ≥3 разных x)."""
+    """Подогнать целочисленную a·x²+b·x+c ко ВСЕМ точкам (или None).
+
+    Требует ≥4 точек с РАЗНЫМ x: 3 определяют параболу, 4-я её ПОДТВЕРЖДАЕТ (иначе из
+    любых 3 точек выводится какая-нибудь парабола — это память, а не правило).
+    """
+    if len({x for x, _ in pts}) < 4:
+        return None
     P: list[tuple[int, int]] = []
     seen: set[int] = set()
     for x, y in pts:
@@ -157,3 +170,68 @@ def invent_primitive(examples: list[tuple[Any, Any]]) -> Primitive | None:
                                  _mk_list_fn(lambda xs, a=a, b=b: [a * e + b for e in xs]))
 
     return None
+
+
+# ── СЛЕДУЮЩИЙ СЛОЙ: условная (ветвящаяся) операция «если P(x): f иначе g» из данных ──
+
+def _eq(a: Any, b: Any) -> bool:
+    try:
+        return type(a) == type(b) and a == b
+    except (TypeError, ValueError):
+        return False
+
+
+def _fit_branch(pairs: list[tuple[Any, Any]]) -> tuple[Callable[[Any], Any], str] | None:
+    """Подогнать ветку: тождество, константа или изобретённая прямолинейная операция."""
+    outs = [o for _, o in pairs]
+    if all(_eq(i, o) for i, o in pairs):
+        return (lambda x: x), "x"
+    if len(pairs) >= 2 and all(_eq(o, outs[0]) for o in outs):  # постоянная ветка (≥2 — подтверждение)
+        c = outs[0]
+        return (lambda x, c=c: c), str(c)
+    prim = invent_primitive(pairs)                       # аффинная/квадратичная/поэлементная
+    if prim is not None:
+        return prim.fn, prim.name
+    return None
+
+
+def invent_conditional(examples: list[tuple[Any, Any]]) -> Primitive | None:
+    """Собрать операцию «если P(x): f иначе g», где P, f, g выведены из наблюдений.
+
+    Перебирает грунтованные предикаты как РАЗДЕЛИТЕЛИ примеров; для каждой ветки
+    подгоняет операцию (тождество/константа/аффинная…). Берёт первую гипотезу,
+    ТОЧНО воспроизводящую все примеры. Так из данных рождается ветвление (abs,
+    «обнулить отрицательные», «удвоить чётные» …), а не только прямая линия.
+    """
+    if len(examples) < 3:
+        return None  # нужно ≥1 примера на ветку и разделение меток
+    ins = [i for i, _ in examples]
+    for pname, P in candidates_for(ins):
+        try:
+            true_pairs = [(i, o) for i, o in examples if P(i)]
+            false_pairs = [(i, o) for i, o in examples if not P(i)]
+        except (TypeError, ValueError, IndexError, ZeroDivisionError):
+            continue
+        if not true_pairs or not false_pairs:
+            continue  # предикат должен РАЗДЕЛЯТЬ примеры на обе ветки
+        f = _fit_branch(true_pairs)
+        g = _fit_branch(false_pairs)
+        if f is None or g is None:
+            continue
+        ffn, fname = f
+        gfn, gname = g
+
+        def cond(x, P=P, ffn=ffn, gfn=gfn):
+            return ffn(x) if P(x) else gfn(x)
+
+        try:
+            if all(_eq(cond(i), o) for i, o in examples):
+                return Primitive(f"если {pname}: {fname} иначе {gname}", cond)
+        except (TypeError, ValueError, IndexError, ZeroDivisionError):
+            continue
+    return None
+
+
+def invent(examples: list[tuple[Any, Any]]) -> Primitive | None:
+    """Изобрести операцию из наблюдений: прямолинейную, иначе — условную (ветвящуюся)."""
+    return invent_primitive(examples) or invent_conditional(examples)

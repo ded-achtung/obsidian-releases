@@ -94,6 +94,8 @@ from thinking_system.language.conditional import ConditionalReader
 from thinking_system.language.planner import TaskPlanner
 from thinking_system.language.morphology import stem, normalize
 from thinking_system.agent.language_options import LanguageOptionAgent
+from thinking_system.reasoning.invention import invent, invent_primitive, invent_conditional
+from thinking_system.reasoning.predicates import induce_predicate
 from thinking_system.system import ThinkingSystem
 
 __version__ = "0.0.1"
@@ -266,6 +268,11 @@ __all__ = [
     # морфология: формы слова → основа (понимать разные формулировки)
     "stem",
     "normalize",
+    # изобретение операций ИЗ НАБЛЮДЕНИЙ: регулярность/ветвление из данных, не из воздуха
+    "invent",
+    "invent_primitive",
+    "invent_conditional",
+    "induce_predicate",
     # ЕДИНАЯ СИСТЕМА: один агент, общая память (процедур/семантик/эпизод), переносы
     "ThinkingSystem",
 ]
