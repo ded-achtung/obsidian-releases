@@ -46,10 +46,12 @@ def parse_demonstration(line: str):
 class LessonReader:
     """Читает урок-текст, извлекает смысл по типам и даёт пользоваться прочитанным."""
 
-    def __init__(self) -> None:
-        self.lex = GroundedLexicon()
-        self.facts = FactReader()
-        self.causal = CausalReader()
+    def __init__(self, *, lex: GroundedLexicon | None = None,
+                 facts: FactReader | None = None, causal: CausalReader | None = None) -> None:
+        # Компоненты можно ВНЕДРИТЬ (общая память единой системы), иначе — свои.
+        self.lex = lex if lex is not None else GroundedLexicon()
+        self.facts = facts if facts is not None else FactReader()
+        self.causal = causal if causal is not None else CausalReader()
         self._demos: dict[str, list] = defaultdict(list)
         self.stats = {"примеры": 0, "слова": 0, "факты": 0, "причины": 0, "пропущено": 0}
 

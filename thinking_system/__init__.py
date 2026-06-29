@@ -94,6 +94,7 @@ from thinking_system.language.conditional import ConditionalReader
 from thinking_system.language.planner import TaskPlanner
 from thinking_system.language.morphology import stem, normalize
 from thinking_system.agent.language_options import LanguageOptionAgent
+from thinking_system.system import ThinkingSystem
 
 __version__ = "0.0.1"
 
@@ -265,4 +266,6 @@ __all__ = [
     # морфология: формы слова → основа (понимать разные формулировки)
     "stem",
     "normalize",
+    # ЕДИНАЯ СИСТЕМА: один агент, общая память (процедур/семантик/эпизод), переносы
+    "ThinkingSystem",
 ]
