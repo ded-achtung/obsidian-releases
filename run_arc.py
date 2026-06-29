@@ -10,15 +10,21 @@ ARC-AGI (Apache-2.0, fchollet/ARC-AGI) в локальный кэш и изме�
   test-пару (а не просто подошла к данным примерам).
 
 Запуск:
-    python run_arc.py                      # 400 training задач, глубины 1..2
+    python run_arc.py                      # seed + синтез из данных (по умолчанию)
+    python run_arc.py --no-synth           # только фиксированный словарь (baseline)
     python run_arc.py --split evaluation   # 400 evaluation задач
     python run_arc.py --max-depth 3 --growth
     python run_arc.py --data-dir путь/к/ARC-AGI/data   # без скачивания
 
-Воспроизведённый результат (training, глубина ≤2, held-out): 22/400 решено, 0 overfit,
-8 многошаговых; повторяющиеся комбо «keep_largest ▸ bbox» ×2 и «flip_h ▸ flip_v» ×2.
-Рост библиотеки даёт ЭФФЕКТИВНОСТЬ (эти семьи берутся на глубине 1), но +0 к ОХВАТУ;
-глубина 3 тоже не расширяет охват — потолок задаёт ШИРИНА примитивов, не глубина поиска.
+Результаты (training, глубина ≤2, held-out):
+  • только фиксированный seed (--no-synth): 22/400, 0 overfit, 8 многошаговых; повтор-
+    комбо «keep_largest ▸ bbox» ×2, «flip_h ▸ flip_v» ×2. Рост библиотеки = ЭФФЕКТИВНОСТЬ
+    (семьи берутся на глубине 1), но +0 к ОХВАТУ; глубина 3 тоже +0 — потолок задаёт
+    ШИРИНА примитивов.
+  • seed + СИНТЕЗ из данных (по умолчанию): 29/400 — +7 задач, которые фиксированный
+    словарь решить НЕ может. Их решают примитивы, выведенные из самих данных задачи
+    (colormap*/upscale*/tile*), а не заложенные заранее (см. synthesis.py). Это первый
+    реальный выход за рамки словаря: язык растёт из данных, а не только рекомбинируется.
 """
 from __future__ import annotations
 
@@ -36,6 +42,7 @@ from thinking_system.reasoning.grid_seed import full_grid_seed
 from thinking_system.reasoning.induction import Library, Primitive
 from thinking_system.reasoning.library_learning import LibraryLearner
 from thinking_system.reasoning.search_prior import best_first_induce
+from thinking_system.reasoning.synthesis import synthesize
 
 _API = "https://api.github.com/repos/fchollet/ARC-AGI/contents/data/{split}?per_page=100&page={page}"
 _CACHE = os.path.join(os.path.dirname(__file__), ".arc_cache")
@@ -109,8 +116,12 @@ def _heldout_ok(prog, test) -> bool:
         return False
 
 
-def evaluate(files, prims, depth, *, budget, timeout):
-    """Вернуть (решённые held-out, overfit train✓/test✗, программы, timeouts)."""
+def evaluate(files, prims, depth, *, budget, timeout, synth=False):
+    """Вернуть (решённые held-out, overfit train✓/test✗, программы, timeouts).
+
+    synth=True — к seed добавляются примитивы, СИНТЕЗИРОВАННЫЕ из TRAIN-пар каждой
+    задачи (выход за рамки фиксированного словаря; имена таких примитивов содержат «*»).
+    """
     prims = prims.prims if isinstance(prims, Library) else prims
     solved, overfit, programs, timeouts = [], [], {}, 0
     for path in files:
@@ -119,9 +130,10 @@ def evaluate(files, prims, depth, *, budget, timeout):
             tr, te = load_task(path)
         except Exception:
             continue
+        task_prims = prims + [_guard(p) for p in synthesize(tr)] if synth else prims
         signal.alarm(timeout)
         try:
-            prog, _ = best_first_induce(tr, prims, None, max_depth=depth, budget=budget)
+            prog, _ = best_first_induce(tr, task_prims, None, max_depth=depth, budget=budget)
         except _Timeout:
             timeouts += 1; signal.alarm(0); continue
         except Exception:
@@ -143,18 +155,23 @@ def main() -> None:
     ap.add_argument("--timeout", type=int, default=4, help="сек на задачу")
     ap.add_argument("--data-dir", default=None, help="локальный ARC-AGI/data (иначе — скачать)")
     ap.add_argument("--growth", action="store_true", help="проверить рост библиотеки: охват vs эффективность")
+    ap.add_argument("--no-synth", dest="synth", action="store_false",
+                    help="отключить синтез примитивов из данных (только фиксированный словарь)")
     args = ap.parse_args()
 
     data = ensure_data(args.split, args.data_dir)
     files = sorted(glob.glob(os.path.join(data, "*.json")))
     seed = [_guard(p) for p in full_grid_seed()]
-    print(f"\nARC {args.split}: {len(files)} задач | seed={len(seed)} прим. | budget={args.budget} | held-out\n")
+    mode = "seed + синтез из данных" if args.synth else "только фиксированный seed"
+    print(f"\nARC {args.split}: {len(files)} задач | seed={len(seed)} прим. | budget={args.budget} | "
+          f"held-out | {mode}\n")
 
     all_progs: dict = {}
     last_solved: list[str] = []
     for depth in range(1, args.max_depth + 1):
         t0 = time.time()
-        solved, overfit, progs, tos = evaluate(files, seed, depth, budget=args.budget, timeout=args.timeout)
+        solved, overfit, progs, tos = evaluate(files, seed, depth, budget=args.budget,
+                                               timeout=args.timeout, synth=args.synth)
         all_progs.update(progs)
         last_solved = solved
         ms = sum(1 for p in progs.values() if p.length >= 2)
@@ -164,6 +181,11 @@ def main() -> None:
     combos = collections.Counter(str(p) for p in all_progs.values() if p.length >= 2)
     rep = {k: c for k, c in combos.items() if c >= 2}
     print(f"\nповторяющиеся многошаговые комбо (≥2): {rep or 'нет'}")
+    if args.synth:
+        beyond = {n: p for n, p in all_progs.items() if any("*" in s.name for s in p.steps)}
+        print(f"\nрешено ВНЕ фиксированного словаря (синтез из данных): {len(beyond)} задач")
+        for n, p in sorted(beyond.items()):
+            print(f"   {n}: {p}")
 
     if args.growth:
         learner = LibraryLearner(seed)
