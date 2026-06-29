@@ -57,7 +57,7 @@ def best_first_induce(examples: list[tuple], primitives: list[Primitive], weight
         for p in primitives:
             try:
                 nv = [p.fn(v) for v in vals]
-            except Exception:  # noqa: BLE001
+            except (TypeError, ValueError, IndexError, KeyError):  # примитив неприменим к значению → отсев
                 continue
             generated += 1
             if generated > budget:

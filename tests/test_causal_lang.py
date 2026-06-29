@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from thinking_system.language.causal_lang import CausalReader
 
 
@@ -17,6 +19,14 @@ def test_parses_causal_claims() -> None:
     cr = CausalReader()
     assert cr.tell("дождь вызывает мокрый") == ("дождь", "мокрый")
     assert "дождь" in cr.parents["мокрый"]
+
+
+def test_malformed_statement_raises_not_crashes() -> None:
+    # Маркер с краю/в одиночку → понятный ValueError, а не IndexError/StopIteration.
+    cr = CausalReader()
+    for bad in ["вызывает", "дождь вызывает", "вызывает мокрый", "просто проза"]:
+        with pytest.raises(ValueError):
+            cr.tell(bad)
 
 
 def test_causal_path_queries() -> None:

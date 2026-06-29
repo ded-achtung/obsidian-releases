@@ -11,13 +11,24 @@
 from __future__ import annotations
 
 import numpy as np
-import torch
-import torch.nn as nn
+
+try:  # torch — опциональная зависимость (pip install -e '.[dl]')
+    import torch
+    import torch.nn as nn
+except ImportError:  # noqa: BLE001 — модуль импортируется без torch; ошибка только при использовании
+    torch = None  # type: ignore[assignment]
+    nn = None  # type: ignore[assignment]
 
 from thinking_system.predictors.base import Predictor
 
 
-def default_device() -> torch.device:
+def _require_torch() -> None:
+    if torch is None:
+        raise ImportError("torch не установлен — установите его: pip install -e '.[dl]'")
+
+
+def default_device() -> "torch.device":
+    _require_torch()
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -25,6 +36,7 @@ class TorchMLPPredictor(Predictor):
     """Torch-версия MLPPredictor (предсказание латента). Drop-in для PredictiveLoop."""
 
     def __init__(self, context_dim: int, latent_dim: int, *, hidden_dim: int = 128, lr: float = 1e-3, seed: int = 0, device=None) -> None:
+        _require_torch()
         torch.manual_seed(seed)
         self.device = device or default_device()
         self.net = nn.Sequential(
@@ -51,6 +63,7 @@ class TorchSymbolicPredictor:
     """Torch-версия SymbolicPredictor (следующий символ/байт). GPU-ready для масштаба."""
 
     def __init__(self, vocab_size: int, context_len: int, *, emb_dim: int = 24, hidden_dim: int = 128, lr: float = 1e-3, weight_decay: float = 0.0, seed: int = 0, device=None) -> None:
+        _require_torch()
         torch.manual_seed(seed)
         self.device = device or default_device()
         self.context_len = context_len

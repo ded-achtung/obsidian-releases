@@ -42,7 +42,7 @@ class Researcher:
                 xv = list(x) if isinstance(x, list) else x
                 try:
                     twice = prog(prog(xv))
-                except Exception:  # noqa: BLE001 — выход не того типа → нельзя применить дважды
+                except (TypeError, ValueError, IndexError, KeyError):  # выход не того типа → нельзя применить дважды
                     applicable = False
                     break
                 involution = involution and (twice == xv)

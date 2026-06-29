@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from thinking_system.language.facts import FactReader
 
 
@@ -17,6 +19,14 @@ def test_parses_statements_into_facts() -> None:
     fr = FactReader()
     assert fr.tell("Сократ это человек") == ("is_a", "сократ", "человек")
     assert fr.tell("каждый человек смертный") == ("свойство", "человек", "смертный")
+
+
+def test_incomplete_statement_raises_not_crashes() -> None:
+    # «это» с краю / пустое / неполное универсальное → ValueError, не IndexError.
+    fr = FactReader()
+    for bad in ["A это", "это человек", "это", "каждый"]:
+        with pytest.raises(ValueError):
+            fr.tell(bad)
 
 
 def test_answers_by_multi_hop_deduction() -> None:

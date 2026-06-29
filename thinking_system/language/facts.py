@@ -29,15 +29,24 @@ class FactReader:
         self.kb.inherits("is_a")             # свойства класса наследуются видом
 
     def tell(self, statement: str) -> tuple[str, str, str]:
-        """Разобрать утверждение и добавить факт. Вернуть добавленную тройку."""
+        """Разобрать утверждение и добавить факт. Вернуть добавленную тройку.
+
+        Бросает ValueError на пустом/неполном утверждении (например «A это» без B).
+        """
         toks = tokenize(statement)
+        if not toks:
+            raise ValueError(f"пустое утверждение: {statement!r}")
         if any(t in _UNIV for t in toks):
             rest = [t for t in toks if t not in _UNIV]
+            if len(rest) < 2:
+                raise ValueError(f"неполное универсальное утверждение: {statement!r}")
             cls, prop = rest[0], rest[-1]
             self.kb.add("свойство", cls, prop)
             return ("свойство", cls, prop)
         if "это" in toks:
             i = toks.index("это")
+            if not 0 < i < len(toks) - 1:
+                raise ValueError(f"не распознано утверждение «A это B»: {statement!r}")
             a, b = toks[i - 1], toks[i + 1]
         else:
             a, b = toks[0], toks[-1]
@@ -47,9 +56,13 @@ class FactReader:
     def parse_question(self, question: str) -> tuple[str, str, str]:
         """Разобрать вопрос в запрос (отношение, A, B)."""
         toks = tokenize(question)
+        if not toks:
+            return ("свойство", "", "")
         if "это" in toks:
             i = toks.index("это")
-            return ("is_a", toks[i - 1], toks[i + 1] if i + 1 < len(toks) else toks[-1])
+            a = toks[i - 1] if i - 1 >= 0 else toks[0]
+            b = toks[i + 1] if i + 1 < len(toks) else toks[-1]
+            return ("is_a", a, b)
         return ("свойство", toks[0], toks[-1])
 
     def ask(self, question: str) -> bool:

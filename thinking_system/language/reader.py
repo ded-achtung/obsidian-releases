@@ -23,7 +23,9 @@ from thinking_system.language.facts import FactReader, _UNIV
 from thinking_system.language.causal_lang import CausalReader, _MARK
 
 _SEP = re.compile(r"\s*(?:=|даёт|дает|равно|равна|->|→)\s*")
-_DEMO_STOP = {"пример", "ещё", "еще", "список", "массив", "и", "к", "на"}
+# Служебные слова, которые не являются именем операции (рус. + частые англ. филлеры).
+_DEMO_STOP = {"пример", "ещё", "еще", "список", "массив", "и", "к", "на",
+              "do", "on", "to", "of", "the", "a", "an", "apply", "operation"}
 
 
 def parse_demonstration(line: str):
@@ -64,11 +66,17 @@ class LessonReader:
                 self._demos[word].append((inp, out))
                 self.stats["примеры"] += 1
             elif any(m in toks for m in _MARK):
-                self.causal.tell(line)
-                self.stats["причины"] += 1
+                try:                                           # неполное причинное утверждение → честный пропуск
+                    self.causal.tell(line)
+                    self.stats["причины"] += 1
+                except ValueError:
+                    self.stats["пропущено"] += 1
             elif "это" in toks or any(u in toks for u in _UNIV):
-                self.facts.tell(line)
-                self.stats["факты"] += 1
+                try:                                           # неполный факт (напр. «A это» без B) → пропуск
+                    self.facts.tell(line)
+                    self.stats["факты"] += 1
+                except ValueError:
+                    self.stats["пропущено"] += 1
             else:
                 self.stats["пропущено"] += 1
         for word, examples in self._demos.items():            # выучить значение каждого слова из его примеров

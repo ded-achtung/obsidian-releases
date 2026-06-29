@@ -40,7 +40,7 @@ def plan_ops(start, goal, words: dict, *, max_depth: int = 4) -> list[str] | Non
         for name, prog in words.items():
             try:
                 nv = prog(v)
-            except Exception:  # noqa: BLE001 — несовместимый тип
+            except (TypeError, ValueError, IndexError, KeyError):  # операция неприменима к значению → пропуск
                 continue
             if repr(nv) not in seen:
                 seen.add(repr(nv))

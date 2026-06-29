@@ -53,7 +53,7 @@ class Program:
 def _eq(a: Any, b: Any) -> bool:
     try:
         return type(a) == type(b) and a == b
-    except Exception:  # noqa: BLE001
+    except (TypeError, ValueError):  # несравнимые типы / неоднозначная истинность — не равны
         return False
 
 
@@ -80,7 +80,7 @@ def induce(examples: list[tuple[Any, Any]], primitives: list[Primitive], *, max_
             for p in primitives:
                 try:
                     nv = [p.fn(v) for v in vals]
-                except Exception:  # noqa: BLE001 — несовместимый тип = недопустимый шаг
+                except (TypeError, ValueError, IndexError, KeyError):  # примитив неприменим к значению → отсев (настоящие баги всплывут)
                     continue
                 ns = steps + [p]
                 if consistent(nv):

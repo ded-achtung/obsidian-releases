@@ -37,7 +37,7 @@ def induce_majority(examples, primitives: list[Primitive], *, max_depth: int = 2
             for p in primitives:
                 try:
                     nv = [p.fn(v) for v in vals]
-                except Exception:  # noqa: BLE001
+                except (TypeError, ValueError, IndexError, KeyError):  # примитив неприменим к значению → отсев
                     continue
                 ns = steps + [p]
                 miss = misfit(nv)

@@ -32,6 +32,12 @@ class BytePairTokenizer:
         self.vocab_size = 256
 
     def train(self, text: str, vocab_size: int) -> "BytePairTokenizer":
+        """Выучить слияния до vocab_size токенов.
+
+        Если в тексте не хватает повторяющихся пар (короткий/разреженный текст),
+        обучение остановится раньше — итоговый размер словаря см. в self.vocab_size
+        (он может быть МЕНЬШЕ запрошенного, это не ошибка).
+        """
         ids = list(text.encode("utf-8"))
         self.merge_list = []
         nid = 256
@@ -58,4 +64,7 @@ class BytePairTokenizer:
         return ids
 
     def decode(self, ids) -> str:
-        return b"".join(self.vocab[int(i)] for i in ids).decode("utf-8", errors="replace")
+        # Неизвестный (вне словаря) id → видимый маркер замены U+FFFD, без падения.
+        repl = "�".encode("utf-8")
+        out = [self.vocab[i] if (i := int(j)) in self.vocab else repl for j in ids]
+        return b"".join(out).decode("utf-8", errors="replace")

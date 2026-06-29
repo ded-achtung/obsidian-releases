@@ -9,16 +9,22 @@
 from __future__ import annotations
 
 import numpy as np
-import torch
-import torch.nn as nn
 
-from thinking_system.predictors.torch_backend import default_device
+try:  # torch — опциональная зависимость (pip install -e '.[dl]')
+    import torch
+    import torch.nn as nn
+except ImportError:  # noqa: BLE001 — модуль импортируется без torch; ошибка только при использовании
+    torch = None  # type: ignore[assignment]
+    nn = None  # type: ignore[assignment]
+
+from thinking_system.predictors.torch_backend import _require_torch, default_device
 
 
 class CharRNN:
     """Символьный LSTM-генератор (embedding → LSTM → softmax над словарём)."""
 
     def __init__(self, vocab_size: int, *, emb: int = 64, hidden: int = 256, layers: int = 2, lr: float = 2e-3, seed: int = 0, device=None) -> None:
+        _require_torch()
         torch.manual_seed(seed)
         self.device = device or default_device()
         self.vocab = vocab_size
@@ -52,29 +58,29 @@ class CharRNN:
                 print(f"   step {step + 1}: train bpc {float(loss.item()) / np.log(2):.2f}")
         return self
 
-    @torch.no_grad()
     def bpc(self, ids: np.ndarray, *, seq_len: int = 128) -> float:
-        data = torch.as_tensor(np.asarray(ids), dtype=torch.long, device=self.device)
-        total = count = 0
-        for i in range(0, len(data) - seq_len - 1, seq_len):
-            x = data[i : i + seq_len][None]
-            y = data[i + 1 : i + seq_len + 1][None]
-            logits, _ = self._forward(x)
-            total += float(self.loss_fn(logits.reshape(-1, self.vocab), y.reshape(-1)).item()) * seq_len
-            count += seq_len
-        return total / max(count, 1) / np.log(2)
+        with torch.no_grad():  # контекст, а не декоратор: torch трогается только при вызове
+            data = torch.as_tensor(np.asarray(ids), dtype=torch.long, device=self.device)
+            total = count = 0
+            for i in range(0, len(data) - seq_len - 1, seq_len):
+                x = data[i : i + seq_len][None]
+                y = data[i + 1 : i + seq_len + 1][None]
+                logits, _ = self._forward(x)
+                total += float(self.loss_fn(logits.reshape(-1, self.vocab), y.reshape(-1)).item()) * seq_len
+                count += seq_len
+            return total / max(count, 1) / np.log(2)
 
-    @torch.no_grad()
     def generate(self, seed_ids, n: int, *, temp: float = 0.6) -> list[int]:
-        self.lstm.flatten_parameters()
-        x = torch.as_tensor(np.asarray(seed_ids), dtype=torch.long, device=self.device)[None]
-        logits, h = self._forward(x)
-        last = logits[0, -1]
-        out: list[int] = []
-        for _ in range(n):
-            p = torch.softmax(last / temp, dim=-1)
-            nxt = int(torch.multinomial(p, 1))
-            out.append(nxt)
-            logits, h = self._forward(torch.tensor([[nxt]], device=self.device), h)
+        with torch.no_grad():  # контекст, а не декоратор: torch трогается только при вызове
+            self.lstm.flatten_parameters()
+            x = torch.as_tensor(np.asarray(seed_ids), dtype=torch.long, device=self.device)[None]
+            logits, h = self._forward(x)
             last = logits[0, -1]
-        return out
+            out: list[int] = []
+            for _ in range(n):
+                p = torch.softmax(last / temp, dim=-1)
+                nxt = int(torch.multinomial(p, 1))
+                out.append(nxt)
+                logits, h = self._forward(torch.tensor([[nxt]], device=self.device), h)
+                last = logits[0, -1]
+            return out

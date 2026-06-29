@@ -29,9 +29,14 @@ class CausalReader:
         self.vars: set[str] = set()
 
     def tell(self, statement: str) -> tuple[str, str]:
-        """«X вызывает Y» → причинное ребро X→Y."""
+        """«X вызывает Y» → причинное ребро X→Y (X и Y по краям маркера).
+
+        Бросает ValueError, если маркер не найден или стоит с краю (нет X или Y).
+        """
         toks = tokenize(statement)
-        i = next(k for k, t in enumerate(toks) if t in _MARK)
+        i = next((k for k, t in enumerate(toks) if t in _MARK), None)
+        if i is None or not 0 < i < len(toks) - 1:
+            raise ValueError(f"не распознано причинное утверждение «X вызывает Y»: {statement!r}")
         x, y = toks[i - 1], toks[i + 1]
         if x not in self.parents[y]:
             self.parents[y].append(x)

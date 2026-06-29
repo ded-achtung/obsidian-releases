@@ -29,6 +29,19 @@ def test_parse_demonstration() -> None:
     assert parse_demonstration("просто текст без примера") is None
 
 
+def test_parse_demonstration_skips_filler_words() -> None:
+    # Имя операции, а не служебное слово-филлер рядом с аргументом (англ. «on»/«apply»).
+    assert parse_demonstration("apply reverse on [1, 2] = [2, 1]") == ("reverse", [1, 2], [2, 1])
+
+
+def test_malformed_lines_are_skipped_not_crash() -> None:
+    # Неполные причинные/фактовые строки честно пропускаются, без падения.
+    r = LessonReader()
+    stats = r.read("дождь вызывает\nэто\nA это\nкаждый\n")
+    assert stats["причины"] == 0 and stats["факты"] == 0
+    assert stats["пропущено"] == 4
+
+
 def test_reads_mixed_material_and_learns() -> None:
     r = LessonReader()
     stats = r.read(LESSON)
