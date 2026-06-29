@@ -55,9 +55,10 @@ def test_language_composes_read_words() -> None:
 def test_naming_a_found_skill_transfers_reasoning_to_language() -> None:
     # ПЕРЕНОС рассуждение→язык: найденный поиском навык становится словом И сокращает поиск.
     ts = ThinkingSystem()
-    assert ts.solve([(2, 5), (3, 10)], max_depth=1) is None      # x²+1 не берётся на глубине 1
+    # invent=False: проверяем именно КОМПОЗИЦИЮ (без изобретения аффинного мимика из 2 точек)
+    assert ts.solve([(2, 5), (3, 10)], max_depth=1, invent=False) is None   # x²+1 не берётся на глубине 1
     assert ts.name_skill("квадрик", [(2, 5), (3, 10)])
-    prog = ts.solve([(2, 5), (3, 10)], max_depth=1)
+    prog = ts.solve([(2, 5), (3, 10)], max_depth=1, invent=False)
     assert prog is not None and str(prog) == "квадрик"           # теперь берётся одним шагом
     assert ts.understand("квадрик 4")["answer"] == 17            # и язык им владеет (на новом входе)
 

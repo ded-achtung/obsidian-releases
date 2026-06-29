@@ -35,6 +35,7 @@ from thinking_system.language.facts import FactReader
 from thinking_system.language.reader import LessonReader
 from thinking_system.language.understanding import GroundedLexicon, tokenize
 from thinking_system.reasoning.induction import Library, Program, default_primitives
+from thinking_system.reasoning.invention import invent_primitive
 from thinking_system.text.vocab import ByteVocab
 from thinking_system.world.gridworld import default_maze
 
@@ -105,11 +106,34 @@ class ThinkingSystem:
         return res
 
     # ── РАССУЖДЕНИЕ: синтез программы из примеров по ОБЩЕЙ библиотеке ────────────────
-    def solve(self, examples: list[tuple], *, max_depth: int = 3) -> Program | None:
-        """Вывести программу из 2-3 примеров поиском по общей библиотеке."""
+    def solve(self, examples: list[tuple], *, max_depth: int = 3, invent: bool = True) -> Program | None:
+        """Вывести программу из 2-3 примеров: сперва КОМПОЗИЦИЯ известного (Оккам),
+
+        затем — если не вышло и invent=True — ИЗОБРЕТЕНИЕ операции из наблюдаемой
+        регулярности (новая операция строится из того, что видно в данных, и
+        добавляется в библиотеку для переиспользования).
+        """
         prog = self.library.induce(examples, max_depth=max_depth)
+        if prog is None and invent:
+            prim = self.invent_operation(examples)
+            if prim is not None:
+                prog = Program([prim])
         self.episode.append(f"solve: {len(examples)} примеров → {prog}")
         return prog
+
+    # ── ИЗОБРЕТЕНИЕ: новая операция ИЗ НАБЛЮДЕНИЙ (не из воздуха) → в библиотеку ─────
+    def invent_operation(self, examples: list[tuple]) -> "Primitive | None":  # type: ignore[name-defined]
+        """Подогнать грунтованный шаблон к примерам; родившуюся операцию — в библиотеку."""
+        prim = invent_primitive(examples)
+        if prim is None:
+            self.episode.append(f"invent: из {len(examples)} примеров регулярность не найдена")
+            return None
+        if prim.name not in self._lib_names:           # рост библиотеки из наблюдаемого
+            self.library.prims.append(prim)
+            self.library.abstractions.append(prim.name)
+            self._lib_names.add(prim.name)
+        self.episode.append(f"invent: новая операция «{prim.name}» из наблюдений")
+        return prim
 
     # ── ПЕРЕНОС рассуждение→язык: назвать найденный навык (станет словом и примитивом) ─
     def name_skill(self, word: str, examples: list[tuple], *, max_depth: int = 3) -> bool:
@@ -119,6 +143,9 @@ class ThinkingSystem:
         доступна ЯЗЫКУ (understand «слово …») и сокращает будущий поиск (глубина↓).
         """
         prog = self.library.induce(examples, max_depth=max_depth)
+        if prog is None:                               # не вышло композицией — изобрести из данных
+            prim = invent_primitive(examples)
+            prog = Program([prim]) if prim is not None else None
         if prog is None:
             self.episode.append(f"name_skill: {word!r} — не выведено")
             return False
