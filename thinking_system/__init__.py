@@ -95,7 +95,9 @@ from thinking_system.language.planner import TaskPlanner
 from thinking_system.language.morphology import stem, normalize
 from thinking_system.agent.language_options import LanguageOptionAgent
 from thinking_system.reasoning.invention import (invent, invent_primitive, invent_conditional,
-                                                 invent_structural, invent_multibranch)
+                                                 invent_structural, invent_multibranch,
+                                                 invent_window, invent_grid, invent_grid_recolor,
+                                                 invent_grid_window)
 from thinking_system.reasoning.predicates import induce_predicate
 from thinking_system.system import ThinkingSystem
 
@@ -275,6 +277,10 @@ __all__ = [
     "invent_conditional",
     "invent_structural",
     "invent_multibranch",
+    "invent_window",
+    "invent_grid",
+    "invent_grid_recolor",
+    "invent_grid_window",
     "induce_predicate",
     # ЕДИНАЯ СИСТЕМА: один агент, общая память (процедур/семантик/эпизод), переносы
     "ThinkingSystem",

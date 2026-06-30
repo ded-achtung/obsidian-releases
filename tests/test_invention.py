@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from thinking_system.reasoning.invention import (invent_primitive, invent_conditional,
                                                  invent_structural, invent_multibranch,
-                                                 invent_window, invent_grid, invent)
+                                                 invent_window, invent_grid, invent,
+                                                 invent_grid_recolor, invent_grid_window, _morph)
 from thinking_system.system import ThinkingSystem
 
 
@@ -108,6 +109,42 @@ def test_invents_grid_transform_from_observation() -> None:
 def test_grid_rejects_arbitrary() -> None:
     assert invent_grid([([[1, 2], [3, 4]], [[9, 9], [9, 9]]),
                         ([[1, 1], [1, 1]], [[2, 2], [2, 2]])]) is None
+
+
+def test_invents_grid_recolor_swap() -> None:
+    # Поэлементная перекраска (обмен цветов) — не выразима как +k, чисто из наблюдений.
+    p = invent_grid_recolor([([[1, 2, 1]], [[2, 1, 2]]), ([[2, 2, 1]], [[1, 1, 2]])])
+    assert p is not None and p.fn(((1, 1, 2, 2),)) == ((2, 2, 1, 1),)
+
+
+def test_grid_recolor_rejects_inconsistent_map() -> None:
+    # Цвет, ведущий в разные выходы → это не функция-перекраска.
+    assert invent_grid_recolor([([[1, 1]], [[2, 3]])]) is None
+
+
+def test_invents_grid_window_dilation_and_erosion() -> None:
+    G = ((0, 0, 0), (0, 5, 0), (0, 0, 0))
+    H = ((0, 0), (3, 0))
+    dil = invent_grid_window([(G, _morph(G, max, False)), (H, _morph(H, max, False))])
+    assert dil is not None and dil.fn(G) == ((0, 5, 0), (5, 5, 5), (0, 5, 0))
+    E = ((5, 5, 5), (5, 0, 5), (5, 5, 5))
+    ero = invent_grid_window([(E, _morph(E, min, False)), (((5, 5), (5, 0)), _morph(((5, 5), (5, 0)), min, False))])
+    assert ero is not None and ero.fn(E) == ((5, 0, 5), (0, 0, 0), (5, 0, 5))
+
+
+def test_deeper_nesting_decision_tree() -> None:
+    # Глубокое дерево решений (вложенность глубины 2): 4-региональная ступенька.
+    step = lambda x: -1 if x < 0 else (0 if x == 0 else (2 if x > 5 else 1))
+    ex = [(-3, -1), (-1, -1), (0, 0), (2, 1), (5, 1), (6, 2), (9, 2)]
+    p = invent(ex)
+    assert p is not None and all(p.fn(x) == step(x) for x in [-7, -1, 0, 3, 5, 6, 12])
+
+
+def test_clamp_to_range_generalizes() -> None:
+    clamp = lambda x: 0 if x < 0 else (10 if x > 10 else x)
+    ex = [(-5, 0), (-2, 0), (3, 3), (7, 7), (8, 8), (9, 9), (11, 10), (15, 10)]
+    p = invent(ex)
+    assert p is not None and all(p.fn(x) == clamp(x) for x in [-9, 0, 5, 8, 9, 10, 11, 20])
 
 
 def test_nested_rule_structural_branch_prefers_flat() -> None:

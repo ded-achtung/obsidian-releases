@@ -27,7 +27,7 @@ from thinking_system.reasoning.induction import Primitive, induce as _compose_in
 from thinking_system.reasoning.predicates import candidates_for
 from thinking_system.reasoning.grids import grid_primitives, to_grid
 
-_MAX_NEST = 1  # глубина вложенности правил внутри ветвей (ветка может быть условием/структурой)
+_MAX_NEST = 2  # глубина вложенности условий внутри ветвей (дерево решений до ~3 уровней)
 
 
 def _is_int(v: Any) -> bool:
@@ -197,7 +197,8 @@ def _fit_leaf(pairs: list[tuple[Any, Any]], *, allow_singleton_const: bool = Fal
     if len(pairs) >= min_const and all(_eq(o, outs[0]) for o in outs):  # постоянная ветка (подтверждение)
         c = outs[0]
         return (lambda x, c=c: c), str(c)
-    for inv in (invent_primitive, invent_structural, invent_window, invent_grid):
+    for inv in (invent_primitive, invent_structural, invent_window, invent_grid,
+                invent_grid_recolor, invent_grid_window):
         p = inv(pairs)
         if p is not None:
             return p.fn, p.name
@@ -429,6 +430,94 @@ def invent_grid(examples: list[tuple[Any, Any]]) -> Primitive | None:
     return Primitive(str(prog), prog.__call__)
 
 
+def _grid(v: Any):
+    return to_grid([list(r) for r in v])
+
+
+def _mk_grid_fn(fn: Callable) -> Callable[[Any], Any]:
+    def f(x: Any) -> Any:
+        if not _is_gridish(x):
+            raise TypeError
+        return fn(_grid(x))
+    return f
+
+
+# ── СЛЕДУЮЩИЙ СЛОЙ: 2D-ОКНА над сетками — поэлементная перекраска и морфология ──────
+
+def invent_grid_recolor(examples: list[tuple[Any, Any]]) -> Primitive | None:
+    """Вывести ПЕРЕКРАСКУ сетки: согласованное отображение цвет→цвет (out[r][c]=m[in[r][c]]).
+
+    Карта строится по всем клеткам всех примеров; если цвет ведёт в ≠ выходы — это не
+    перекраска (None). Неизвестные при применении цвета остаются как есть.
+    """
+    ins = [i for i, _ in examples]
+    outs = [o for _, o in examples]
+    if not ins or not all(_is_gridish(i) for i in ins) or not all(_is_gridish(o) for o in outs):
+        return None
+    g_ex = [(_grid(i), _grid(o)) for i, o in examples]
+    cmap: dict[Any, Any] = {}
+    for gi, go in g_ex:
+        if len(gi) != len(go) or any(len(ri) != len(ro) for ri, ro in zip(gi, go)):
+            return None  # перекраска сохраняет форму
+        for ri, ro in zip(gi, go):
+            for a, b in zip(ri, ro):
+                if a in cmap and cmap[a] != b:
+                    return None  # неоднозначно → не функция-перекраска
+                cmap[a] = b
+    changes = {a: b for a, b in cmap.items() if a != b}
+    if not changes:
+        return None  # тождество — не операция
+
+    def recolor(g, cmap=dict(cmap)):
+        return tuple(tuple(cmap.get(v, v) for v in row) for row in g)
+
+    name = "перекраска " + ",".join(f"{a}→{b}" for a, b in sorted(changes.items()))
+    return Primitive(name, _mk_grid_fn(recolor))
+
+
+def _morph(g, agg: Callable, diag: bool):
+    rows, cols = len(g), len(g[0])
+    offs = [(-1, 0), (1, 0), (0, -1), (0, 1), (0, 0)]
+    if diag:
+        offs += [(-1, -1), (-1, 1), (1, -1), (1, 1)]
+    out = []
+    for r in range(rows):
+        row = []
+        for c in range(cols):
+            vals = [g[r + dr][c + dc] for dr, dc in offs if 0 <= r + dr < rows and 0 <= c + dc < cols]
+            row.append(agg(vals))
+        out.append(tuple(row))
+    return tuple(out)
+
+
+def invent_grid_window(examples: list[tuple[Any, Any]]) -> Primitive | None:
+    """Вывести 2D-ОКОННОЕ (морфологическое) правило: out[r][c] = агрегат по соседству.
+
+    Дилатация (max) и эрозия (min) по 4- и 8-соседству — классические свёртки над
+    сеткой (паттерны соседства). ≥2 примеров, форма сохраняется, не тождество.
+    """
+    ins = [i for i, _ in examples]
+    outs = [o for _, o in examples]
+    if not ins or not all(_is_gridish(i) for i in ins) or not all(_is_gridish(o) for o in outs):
+        return None
+    if len(examples) < 2:
+        return None
+    g_ex = [(_grid(i), _grid(o)) for i, o in examples]
+    templates: list[tuple[str, Callable]] = [
+        ("дилатация4", lambda g: _morph(g, max, False)),
+        ("эрозия4", lambda g: _morph(g, min, False)),
+        ("дилатация8", lambda g: _morph(g, max, True)),
+        ("эрозия8", lambda g: _morph(g, min, True)),
+    ]
+    for name, fn in templates:
+        try:
+            if all(fn(gi) == go for gi, go in g_ex) and not all(_eq(gi, go) for gi, go in g_ex):
+                return Primitive(name, _mk_grid_fn(fn))
+        except (TypeError, ValueError, IndexError):
+            continue
+    return None
+
+
 def _invent(examples: list[tuple[Any, Any]], *, depth: int = 0) -> Primitive | None:
     """Изобрести операцию из наблюдений (с возможной вложенностью внутри ветвей).
 
@@ -436,7 +525,8 @@ def _invent(examples: list[tuple[Any, Any]], *, depth: int = 0) -> Primitive | N
     многоветочное (плоское N-way) → условное (2-way, может вкладывать).
     """
     return (invent_primitive(examples) or invent_structural(examples) or invent_window(examples)
-            or invent_grid(examples) or invent_multibranch(examples, depth=depth)
+            or invent_grid(examples) or invent_grid_recolor(examples) or invent_grid_window(examples)
+            or invent_multibranch(examples, depth=depth)
             or invent_conditional(examples, depth=depth))
 
 
