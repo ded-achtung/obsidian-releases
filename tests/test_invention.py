@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from thinking_system.reasoning.invention import (invent_primitive, invent_conditional,
-                                                 invent_structural, invent_multibranch)
+                                                 invent_structural, invent_multibranch,
+                                                 invent_window, invent_grid, invent)
 from thinking_system.system import ThinkingSystem
 
 
@@ -80,6 +81,42 @@ def test_invents_multibranch_sign() -> None:
 
 def test_multibranch_rejects_arbitrary_data() -> None:
     assert invent_multibranch([(1, 5), (2, 9), (3, 2), (4, 7)]) is None
+
+
+def test_invents_window_differences() -> None:
+    # Свёрточное: out[i] = in[i+1]-in[i], длино-относительно, на ≥2 длинах.
+    p = invent_window([([1, 3, 6, 10], [2, 3, 4]), ([2, 5, 9], [3, 4])])
+    assert p is not None and p.fn([10, 12, 20]) == [2, 8]
+
+
+def test_invents_window_prefix_sum() -> None:
+    p = invent_window([([1, 2, 3], [1, 3, 6]), ([4, 5], [4, 9])])
+    assert p is not None and p.fn([2, 2, 2, 2]) == [2, 4, 6, 8]
+
+
+def test_window_single_length_not_corroborated() -> None:
+    assert invent_window([([1, 2, 3], [3, 5]), ([4, 5, 6], [9, 11])]) is None
+
+
+def test_invents_grid_transform_from_observation() -> None:
+    # Преобразование сетки подобрано поиском по grid-примитивам под наблюдаемые пары.
+    p = invent_grid([([[1, 2], [3, 4]], [[2, 1], [4, 3]]),
+                     ([[5, 6], [7, 8]], [[6, 5], [8, 7]])])      # flip_h
+    assert p is not None and p.fn(((9, 0), (1, 2))) == ((0, 9), (2, 1))
+
+
+def test_grid_rejects_arbitrary() -> None:
+    assert invent_grid([([[1, 2], [3, 4]], [[9, 9], [9, 9]]),
+                        ([[1, 1], [1, 1]], [[2, 2], [2, 2]])]) is None
+
+
+def test_nested_rule_structural_branch_prefers_flat() -> None:
+    # ВЛОЖЕННОЕ/композиционное: структурная операция в ветке под выученным предикатом;
+    # выбирается ПЛОСКАЯ гипотеза по длине (Оккам), а не запутанная по чётности суммы.
+    p = invent([([1, 2], [1, 2]), ([2, 1], [2, 1]), ([1, 2, 3], [3, 2, 1]),
+                ([3, 2, 1], [1, 2, 3]), ([2, 4, 6, 8], [8, 6, 4, 2]), ([1, 3], [1, 3])])
+    assert p is not None
+    assert p.fn([5, 6, 7]) == [7, 6, 5] and p.fn([8, 9]) == [8, 9]
 
 
 def test_system_solve_falls_back_to_invention_and_grows_library() -> None:

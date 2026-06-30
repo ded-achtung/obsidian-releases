@@ -23,8 +23,11 @@ from __future__ import annotations
 from fractions import Fraction as F
 from typing import Any, Callable
 
-from thinking_system.reasoning.induction import Primitive
+from thinking_system.reasoning.induction import Primitive, induce as _compose_induce
 from thinking_system.reasoning.predicates import candidates_for
+from thinking_system.reasoning.grids import grid_primitives, to_grid
+
+_MAX_NEST = 1  # глубина вложенности правил внутри ветвей (ветка может быть условием/структурой)
 
 
 def _is_int(v: Any) -> bool:
@@ -181,11 +184,11 @@ def _eq(a: Any, b: Any) -> bool:
         return False
 
 
-def _fit_branch(pairs: list[tuple[Any, Any]], *, allow_singleton_const: bool = False) -> tuple[Callable[[Any], Any], str] | None:
-    """Подогнать ветку: тождество, константа или изобретённая прямолинейная операция.
+def _fit_leaf(pairs: list[tuple[Any, Any]], *, allow_singleton_const: bool = False) -> tuple[Callable[[Any], Any], str] | None:
+    """Подогнать ЛИСТОВУЮ ветку — одиночную операцию без управления потоком.
 
-    allow_singleton_const: разрешить константу из 1 примера (для ячеек-одиночек вроде
-    «x=0», где у предиката единственный возможный вход — 1 примера достаточно).
+    Тождество/константа или изобретённая прямолинейная/структурная/оконная/сеточная
+    операция. Это «простые» ветки; вложенные условия — отдельно (см. _fit_branch).
     """
     outs = [o for _, o in pairs]
     if all(_eq(i, o) for i, o in pairs):
@@ -194,46 +197,60 @@ def _fit_branch(pairs: list[tuple[Any, Any]], *, allow_singleton_const: bool = F
     if len(pairs) >= min_const and all(_eq(o, outs[0]) for o in outs):  # постоянная ветка (подтверждение)
         c = outs[0]
         return (lambda x, c=c: c), str(c)
-    prim = invent_primitive(pairs)                       # аффинная/квадратичная/поэлементная
-    if prim is not None:
-        return prim.fn, prim.name
+    for inv in (invent_primitive, invent_structural, invent_window, invent_grid):
+        p = inv(pairs)
+        if p is not None:
+            return p.fn, p.name
     return None
 
 
-def invent_conditional(examples: list[tuple[Any, Any]]) -> Primitive | None:
+def _fit_branch(pairs: list[tuple[Any, Any]], *, allow_singleton_const: bool = False, depth: int = 0, allow_nest: bool = True) -> tuple[Callable[[Any], Any], str] | None:
+    """Ветка: листовая операция; иначе (если allow_nest) — ВЛОЖЕННОЕ условие (до _MAX_NEST)."""
+    leaf = _fit_leaf(pairs, allow_singleton_const=allow_singleton_const)
+    if leaf is not None:
+        return leaf
+    if allow_nest and depth < _MAX_NEST:                  # ВЛОЖЕННОСТЬ: условие внутри ветки
+        nested = invent_multibranch(pairs, depth=depth + 1) or invent_conditional(pairs, depth=depth + 1)
+        if nested is not None:
+            return nested.fn, f"({nested.name})"
+    return None
+
+
+def invent_conditional(examples: list[tuple[Any, Any]], *, depth: int = 0) -> Primitive | None:
     """Собрать операцию «если P(x): f иначе g», где P, f, g выведены из наблюдений.
 
     Перебирает грунтованные предикаты как РАЗДЕЛИТЕЛИ примеров; для каждой ветки
-    подгоняет операцию (тождество/константа/аффинная…). Берёт первую гипотезу,
-    ТОЧНО воспроизводящую все примеры. Так из данных рождается ветвление (abs,
-    «обнулить отрицательные», «удвоить чётные» …), а не только прямая линия.
+    подгоняет операцию. Сперва ищет ПЛОСКУЮ гипотезу (обе ветки — листовые операции,
+    бритва Оккама), и лишь если её нет — допускает ВЛОЖЕННОЕ условие в ветке. Так из
+    данных рождается ветвление (abs, «обнулить отрицательные», «если длинный — развернуть»).
     """
     if len(examples) < 3:
         return None  # нужно ≥1 примера на ветку и разделение меток
     ins = [i for i, _ in examples]
-    for pname, P in candidates_for(ins):
-        try:
-            true_pairs = [(i, o) for i, o in examples if P(i)]
-            false_pairs = [(i, o) for i, o in examples if not P(i)]
-        except (TypeError, ValueError, IndexError, ZeroDivisionError):
-            continue
-        if not true_pairs or not false_pairs:
-            continue  # предикат должен РАЗДЕЛЯТЬ примеры на обе ветки
-        f = _fit_branch(true_pairs)
-        g = _fit_branch(false_pairs)
-        if f is None or g is None:
-            continue
-        ffn, fname = f
-        gfn, gname = g
+    for allow_nest in (False, True):                     # сперва плоские гипотезы, потом вложенные
+        for pname, P in candidates_for(ins):
+            try:
+                true_pairs = [(i, o) for i, o in examples if P(i)]
+                false_pairs = [(i, o) for i, o in examples if not P(i)]
+            except (TypeError, ValueError, IndexError, ZeroDivisionError):
+                continue
+            if not true_pairs or not false_pairs:
+                continue  # предикат должен РАЗДЕЛЯТЬ примеры на обе ветки
+            f = _fit_branch(true_pairs, depth=depth, allow_nest=allow_nest)
+            g = _fit_branch(false_pairs, depth=depth, allow_nest=allow_nest)
+            if f is None or g is None:
+                continue
+            ffn, fname = f
+            gfn, gname = g
 
-        def cond(x, P=P, ffn=ffn, gfn=gfn):
-            return ffn(x) if P(x) else gfn(x)
+            def cond(x, P=P, ffn=ffn, gfn=gfn):
+                return ffn(x) if P(x) else gfn(x)
 
-        try:
-            if all(_eq(cond(i), o) for i, o in examples):
-                return Primitive(f"если {pname}: {fname} иначе {gname}", cond)
-        except (TypeError, ValueError, IndexError, ZeroDivisionError):
-            continue
+            try:
+                if all(_eq(cond(i), o) for i, o in examples):
+                    return Primitive(f"если {pname}: {fname} иначе {gname}", cond)
+            except (TypeError, ValueError, IndexError, ZeroDivisionError):
+                continue
     return None
 
 
@@ -297,7 +314,7 @@ def _partition_families(ins: list[Any]) -> list[tuple[str, list[tuple[str, Calla
     return fams
 
 
-def invent_multibranch(examples: list[tuple[Any, Any]]) -> Primitive | None:
+def invent_multibranch(examples: list[tuple[Any, Any]], *, depth: int = 0) -> Primitive | None:
     """Собрать МНОГОВЕТОЧНУЮ операцию из взаимоисключающих предикатов (≥3 активных ветки).
 
     Каждая ветка выведена из своей подвыборки (с подтверждением). Так из данных
@@ -306,44 +323,126 @@ def invent_multibranch(examples: list[tuple[Any, Any]]) -> Primitive | None:
     if len(examples) < 4:
         return None
     ins = [i for i, _ in examples]
-    for fname, cells in _partition_families(ins):
-        branches: list[tuple[str, Callable[[Any], bool], tuple[Callable[[Any], Any], str] | None]] = []
-        active = 0
-        ok = True
-        for label, pred, singleton in cells:
-            try:
-                pairs = [(i, o) for i, o in examples if pred(i)]
-            except (TypeError, ValueError, ZeroDivisionError):
-                ok = False
-                break
-            if not pairs:
-                branches.append((label, pred, None))
+    for allow_nest in (False, True):                     # сперва плоские ветки, потом вложенные
+        for fname, cells in _partition_families(ins):
+            branches: list[tuple[str, Callable[[Any], bool], tuple[Callable[[Any], Any], str] | None]] = []
+            active = 0
+            ok = True
+            for label, pred, singleton in cells:
+                try:
+                    pairs = [(i, o) for i, o in examples if pred(i)]
+                except (TypeError, ValueError, ZeroDivisionError):
+                    ok = False
+                    break
+                if not pairs:
+                    branches.append((label, pred, None))
+                    continue
+                fb = _fit_branch(pairs, allow_singleton_const=singleton, depth=depth, allow_nest=allow_nest)
+                if fb is None:
+                    ok = False
+                    break
+                branches.append((label, pred, fb))
+                active += 1
+            if not ok or active < 3:                     # «много» = ≥3 активных ветки (2-way — отдельно)
                 continue
-            fb = _fit_branch(pairs, allow_singleton_const=singleton)
-            if fb is None:
-                ok = False
-                break
-            branches.append((label, pred, fb))
-            active += 1
-        if not ok or active < 3:                         # «много» = ≥3 активных ветки (2-way — отдельно)
-            continue
 
-        def fn(x, branches=branches):
-            for _label, pred, fb in branches:
-                if fb is not None and pred(x):
-                    return fb[0](x)
-            raise TypeError  # вход вне покрытых случаев
+            def fn(x, branches=branches):
+                for _label, pred, fb in branches:
+                    if fb is not None and pred(x):
+                        return fb[0](x)
+                raise TypeError  # вход вне покрытых случаев
 
+            try:
+                if all(_eq(fn(i), o) for i, o in examples):
+                    body = "; ".join(f"{lab}→{fb[1]}" for lab, _p, fb in branches if fb)
+                    return Primitive(f"по {fname}: {body}", fn)
+            except (TypeError, ValueError, IndexError, ZeroDivisionError):
+                continue
+    return None
+
+
+# ── СЛЕДУЮЩИЙ СЛОЙ: СКОЛЬЗЯЩЕЕ ОКНО / свёртка над списком (разности/префикс/сумма) ──
+
+def invent_window(examples: list[tuple[Any, Any]]) -> Primitive | None:
+    """Вывести оконное (свёрточное) преобразование списка из наблюдений.
+
+    Выход — функция СОСЕДНИХ элементов: разности in[i+1]-in[i], префикс-сумма,
+    скользящая сумма окна w. Длино-относительно → подтверждаем на ≥2 разных длинах.
+    """
+    ins = [i for i, _ in examples]
+    outs = [o for _, o in examples]
+    if not ins or not all(isinstance(i, list) for i in ins) or not all(isinstance(o, list) for o in outs):
+        return None
+    if len(examples) < 2 or not all(_is_int(v) for i in ins for v in i):
+        return None
+    if len({len(i) for i in ins}) < 2:
+        return None  # длино-относительное окно подтверждаем на ≥2 длинах
+
+    def _diff(xs):
+        return [xs[i + 1] - xs[i] for i in range(len(xs) - 1)]
+
+    def _prefix(xs):
+        out, s = [], 0
+        for v in xs:
+            s += v
+            out.append(s)
+        return out
+
+    templates: list[tuple[str, Callable[[list], list]]] = [("разности", _diff), ("префикс-сумма", _prefix)]
+    maxlen = max(len(i) for i in ins)
+    for w in range(2, maxlen + 1):
+        templates.append((f"скольз.сумма×{w}", (lambda xs, w=w: [sum(xs[i:i + w]) for i in range(len(xs) - w + 1)])))
+
+    for name, fn in templates:
         try:
-            if all(_eq(fn(i), o) for i, o in examples):
-                body = "; ".join(f"{lab}→{fb[1]}" for lab, _p, fb in branches if fb)
-                return Primitive(f"по {fname}: {body}", fn)
+            if all(fn(i) == o for i, o in examples) and not all(_eq(i, o) for i, o in examples):
+                return Primitive(name, _mk_list_fn(fn))
         except (TypeError, ValueError, IndexError, ZeroDivisionError):
             continue
     return None
 
 
+# ── СЛЕДУЮЩИЙ СЛОЙ: операции над СЕТКАМИ из наблюдений (поверх grid-примитивов) ─────
+
+def _is_gridish(v: Any) -> bool:
+    return isinstance(v, (list, tuple)) and len(v) > 0 and all(isinstance(r, (list, tuple)) for r in v)
+
+
+def invent_grid(examples: list[tuple[Any, Any]]) -> Primitive | None:
+    """Вывести преобразование СЕТКИ из наблюдений: композиция grid-примитивов (≤2 шага).
+
+    Те же flip/transpose/rot… что и в grid-домене, но подбираются ПОИСКОМ под
+    наблюдаемые пары сеток (не заданы руками под задачу). ≥2 примеров.
+    """
+    ins = [i for i, _ in examples]
+    outs = [o for _, o in examples]
+    if not ins or not all(_is_gridish(i) for i in ins) or not all(_is_gridish(o) for o in outs):
+        return None
+    if len(examples) < 2:
+        return None
+    grids = [(to_grid([list(r) for r in i]), to_grid([list(r) for r in o])) for i, o in examples]
+    if all(_eq(i, o) for i, o in grids):
+        return None
+    prog = _compose_induce(grids, grid_primitives(), max_depth=2)
+    if prog is None or prog.length == 0:
+        return None
+    return Primitive(str(prog), prog.__call__)
+
+
+def _invent(examples: list[tuple[Any, Any]], *, depth: int = 0) -> Primitive | None:
+    """Изобрести операцию из наблюдений (с возможной вложенностью внутри ветвей).
+
+    Порядок — по простоте (Оккам): листовые (прямая/структура/окно/сетка) →
+    многоветочное (плоское N-way) → условное (2-way, может вкладывать).
+    """
+    return (invent_primitive(examples) or invent_structural(examples) or invent_window(examples)
+            or invent_grid(examples) or invent_multibranch(examples, depth=depth)
+            or invent_conditional(examples, depth=depth))
+
+
 def invent(examples: list[tuple[Any, Any]]) -> Primitive | None:
-    """Изобрести операцию из наблюдений: прямолинейную → структурную → условную → многоветочную."""
-    return (invent_primitive(examples) or invent_structural(examples)
-            or invent_conditional(examples) or invent_multibranch(examples))
+    """Изобрести операцию из наблюдений: прямолинейную → структурную → оконную →
+
+    сеточную → условную → многоветочную (ветки могут быть вложенными правилами).
+    """
+    return _invent(examples, depth=0)
