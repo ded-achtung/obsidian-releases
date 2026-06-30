@@ -17,3 +17,6 @@ books/*.epub
 books/*.mobi
 books/*.djvu
 books/*.txt
+
+# Внешние датасеты (ARC и пр.) — качаются отдельно, в репозиторий не входят
+data/
