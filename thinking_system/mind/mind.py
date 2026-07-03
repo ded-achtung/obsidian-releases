@@ -33,7 +33,7 @@ from thinking_system.reasoning.search_prior import best_first_induce
 from thinking_system.reasoning.templates import anti_unify, template_search
 
 # лестница размышления: (глубина, бюджет программ); дальше по лестнице = думать дольше
-LADDER = [(1, 600), (2, 12000), (3, 120000)]
+LADDER = [(1, 600), (2, 16000), (3, 160000)]
 
 
 class Mind:

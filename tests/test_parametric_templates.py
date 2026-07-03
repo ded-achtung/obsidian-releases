@@ -146,9 +146,10 @@ def test_predicates_instantiated_from_palette() -> None:
 
     pairs = [(to_grid([[3, 0], [0, 7]]), to_grid([[8, 0], [0, 7]]))]
     names = {p.name for p in op.instantiate_predicates(pairs)}
-    # палитра {3,7,8} ∪ {0} × предикаты {big,small,one}
+    # палитра {3,7,8} ∪ {0} × предикаты {big,small,one} × две связности
     assert "big[paint[8]]" in names and "one[paint[0]]" in names
-    assert len(names) == 3 * 4
+    assert "bigc[paint[8]]" in names and "onec[paint[0]]" in names
+    assert len(names) == 3 * 4 * 2
 
 
 def test_mind_solves_predicate_task() -> None:
@@ -162,3 +163,36 @@ def test_mind_solves_predicate_task() -> None:
     res = mind.attempt("recolor_big", [(g1, want1), (g2, want2)], effort=1)
     assert res["solved"] and mind.solutions["recolor_big"] == ["big[paint[8]]"]
     assert mind.program_for("recolor_big")(g1) == want1      # восстановление из имени
+
+
+def test_same_color_connectivity_is_a_variable() -> None:
+    from thinking_system.reasoning import object_param as op
+
+    # связная фигура из 3 с одиночной чужой клеткой 7 ВНУТРИ
+    g = to_grid([[3, 3, 3],
+                 [3, 7, 3],
+                 [3, 3, 0]])
+    # цветослепая связность видит ОДИН объект — one[...] не находит одиночек
+    assert op.by_name("one[paint[0]]").fn(g) == g
+    # одноцветная связность видит 7 как отдельный объект размера 1 — и стирает её
+    assert op.by_name("onec[paint[0]]").fn(g) == to_grid([[3, 3, 3],
+                                                          [3, 0, 3],
+                                                          [3, 3, 0]])
+    # bigc красит наибольшую ОДНОЦВЕТНУЮ область (тройки), не трогая 7
+    assert op.by_name("bigc[paint[5]]").fn(g) == to_grid([[5, 5, 5],
+                                                          [5, 7, 5],
+                                                          [5, 5, 0]])
+
+
+def test_same_color_each_and_pick_roundtrip() -> None:
+    from thinking_system.reasoning import object_param as op
+
+    g = to_grid([[1, 2, 0],
+                 [1, 2, 0],
+                 [0, 0, 5]])
+    # одноцветная: три объекта (1-столбик, 2-столбик, 5); цветослепая: два
+    assert len(op._components_same_color(g)) == 3
+    from thinking_system.reasoning.perception import _components
+    assert len(_components(g)) == 2
+    assert op.by_name("pickc[2]").fn(g) == to_grid([[0, 2, 0], [0, 2, 0], [0, 0, 0]])
+    assert op.by_name("eachc[flip_v]").fn(g) == g            # столбики симметричны

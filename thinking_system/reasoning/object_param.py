@@ -1,16 +1,18 @@
-"""Объект как ПЕРЕМЕННАЯ: each[f] — к каждому объекту, pick[k] — выбор, big/small/one[f] — по условию.
+"""Объект как ПЕРЕМЕННАЯ: each[f], pick[k], big/small/one[f] — в двух связностях.
 
 Третий вид переменных в языке (после цвета и шага-дырки): квантификация по
-ОБЪЕКТАМ сетки. each[f] раскладывает сетку на связные объекты (та же 4-связность,
-что у keep_largest), применяет f к вырезке каждого объекта и собирает сетку
-обратно — «отрази КАЖДЫЙ объект» вместо «отрази сетку». pick[k] оставляет k-й
-по размеру объект — обобщение keep_largest ранговой переменной.
+ОБЪЕКТАМ сетки. each[f] раскладывает сетку на связные объекты, применяет f к
+вырезке каждого и собирает обратно — «отрази КАЖДЫЙ объект» вместо «отрази
+сетку». pick[k] оставляет k-й по размеру объект. Предикатные семейства —
+условная переменная «какому объекту»: big[f] — самому большому, small[f] —
+самому маленькому, one[f] — всем объектам размера 1.
 
-Предикатные семейства — УСЛОВНАЯ переменная «какому объекту»: big[f] применяет
-f только к самому большому объекту, small[f] — к самому маленькому, one[f] — ко
-всем объектам размера 1; остальные объекты не трогаются. Действия f — перекраска
-paint[c] по палитре задачи и стирание paint[0]: «перекрась самый большой в 3» =
-big[paint[3]], «сотри одиночки» = one[paint[0]].
+СВЯЗНОСТЬ — тоже переменная. Обычные имена (each/big/…) считают объектом
+разноцветную связную область (как keep_largest); имена с суффиксом «c»
+(eachc/bigc/onec/…) — ОДНОЦВЕТНУЮ: клетки соединяются, только если цвет
+совпадает. Например onec[paint[0]] стирает одиночные клетки чужого цвета
+внутри фигуры — цветослепая связность их вообще не видит как объекты.
+Поиск сам связывает нужный режим, как и остальные переменные.
 
 В each-семейство входят только операции, для которых пообъектное применение
 ОТЛИЧАЕТСЯ от глобального (симметрии, gravity); f, меняющая размер вырезки,
@@ -24,11 +26,11 @@ import re
 from thinking_system.reasoning import parametric
 from thinking_system.reasoning.grids import Grid, flip_h, flip_v, rot90, to_grid, transpose
 from thinking_system.reasoning.induction import Primitive
-from thinking_system.reasoning.perception import _components, _dims, gravity
+from thinking_system.reasoning.perception import _N4, _components, _dims, gravity
 
-_EACH_RE = re.compile(r"^each\[(.+)\]$")
-_PICK_RE = re.compile(r"^pick\[(\d)\]$")
-_WHERE_RE = re.compile(r"^(big|small|one)\[(.+)\]$")
+_EACH_RE = re.compile(r"^each(c?)\[(.+)\]$")
+_PICK_RE = re.compile(r"^pick(c?)\[(\d)\]$")
+_WHERE_RE = re.compile(r"^(big|small|one)(c?)\[(.+)\]$")
 
 # операции, пообъектное применение которых не совпадает с глобальным
 _INNER = {"flip_h": flip_h, "flip_v": flip_v, "transpose": transpose,
@@ -43,6 +45,36 @@ _PREDS = {
 }
 
 
+def _components_same_color(g: Grid) -> list:
+    """Связные ОДНОЦВЕТНЫЕ области: сосед присоединяется, только если цвет тот же."""
+    rows, cols = _dims(g)
+    seen = [[False] * cols for _ in range(rows)]
+    comps = []
+    for r in range(rows):
+        for c in range(cols):
+            if g[r][c] != 0 and not seen[r][c]:
+                color, stack, cells = g[r][c], [(r, c)], []
+                seen[r][c] = True
+                while stack:
+                    y, x = stack.pop()
+                    cells.append((y, x))
+                    for dy, dx in _N4:
+                        ny, nx = y + dy, x + dx
+                        if (0 <= ny < rows and 0 <= nx < cols and not seen[ny][nx]
+                                and g[ny][nx] == color):
+                            seen[ny][nx] = True
+                            stack.append((ny, nx))
+                comps.append(cells)
+    return comps
+
+
+def _comps(g: Grid, same_color: bool) -> list:
+    comps = _components_same_color(g) if same_color else _components(g)
+    if not comps:
+        raise ValueError("нет объектов")
+    return comps
+
+
 def _crop(g: Grid, cells: list) -> tuple[Grid, int, int]:
     rs = [r for r, _ in cells]
     cs = [c for _, c in cells]
@@ -53,14 +85,11 @@ def _crop(g: Grid, cells: list) -> tuple[Grid, int, int]:
     return to_grid(sub), r0, c0
 
 
-def each_apply(g: Grid, f) -> Grid:
+def each_apply(g: Grid, f, *, same_color: bool = False) -> Grid:
     """f к вырезке каждого связного объекта; сборка на прежних местах."""
-    comps = _components(g)
-    if not comps:
-        raise ValueError("нет объектов")
     rows, cols = _dims(g)
     out = [[0] * cols for _ in range(rows)]
-    for cells in comps:
+    for cells in _comps(g, same_color):
         sub, r0, c0 = _crop(g, cells)
         res = f(sub)
         if _dims(res) != _dims(sub):
@@ -72,9 +101,9 @@ def each_apply(g: Grid, f) -> Grid:
     return to_grid(out)
 
 
-def pick_apply(g: Grid, k: int) -> Grid:
+def pick_apply(g: Grid, k: int, *, same_color: bool = False) -> Grid:
     """Оставить k-й по размеру связный объект (1 = крупнейший), остальное обнулить."""
-    comps = _components(g)
+    comps = _comps(g, same_color)
     if len(comps) < k:
         raise ValueError("объектов меньше k")
     keep = set(sorted(comps, key=len, reverse=True)[k - 1])
@@ -83,13 +112,10 @@ def pick_apply(g: Grid, k: int) -> Grid:
                     for r in range(rows)])
 
 
-def where_apply(g: Grid, pred, f) -> Grid:
+def where_apply(g: Grid, pred, f, *, same_color: bool = False) -> Grid:
     """f к вырезке каждого объекта, выбранного предикатом; прочие — без изменений."""
-    comps = _components(g)
-    if not comps:
-        raise ValueError("нет объектов")
     out = [list(r) for r in g]
-    for cells in pred(comps):
+    for cells in pred(_comps(g, same_color)):
         sub, r0, c0 = _crop(g, cells)
         res = f(sub)
         if _dims(res) != _dims(sub):
@@ -103,30 +129,39 @@ def where_apply(g: Grid, pred, f) -> Grid:
     return to_grid(out)
 
 
-def make_each(inner_name: str) -> Primitive:
+def _sfx(same_color: bool) -> str:
+    return "c" if same_color else ""
+
+
+def make_each(inner_name: str, *, same_color: bool = False) -> Primitive:
     fn = _INNER[inner_name]
-    return Primitive(f"each[{inner_name}]", lambda g, _f=fn: each_apply(g, _f))
+    return Primitive(f"each{_sfx(same_color)}[{inner_name}]",
+                     lambda g, _f=fn, _s=same_color: each_apply(g, _f, same_color=_s))
 
 
-def make_pick(k: int) -> Primitive:
-    return Primitive(f"pick[{k}]", lambda g, _k=k: pick_apply(g, _k))
+def make_pick(k: int, *, same_color: bool = False) -> Primitive:
+    return Primitive(f"pick{_sfx(same_color)}[{k}]",
+                     lambda g, _k=k, _s=same_color: pick_apply(g, _k, same_color=_s))
 
 
-def make_where(pred_name: str, inner: Primitive) -> Primitive:
+def make_where(pred_name: str, inner: Primitive, *, same_color: bool = False) -> Primitive:
     pred = _PREDS[pred_name]
-    return Primitive(f"{pred_name}[{inner.name}]",
-                     lambda g, _p=pred, _f=inner.fn: where_apply(g, _p, _f))
+    return Primitive(f"{pred_name}{_sfx(same_color)}[{inner.name}]",
+                     lambda g, _p=pred, _f=inner.fn, _s=same_color:
+                     where_apply(g, _p, _f, same_color=_s))
 
 
 def instantiate() -> list[Primitive]:
-    """Объектные операции, не зависящие от палитры (each/pick)."""
-    return [make_each(n) for n in _INNER] + [make_pick(k) for k in _PICK_RANKS]
+    """each/pick в обеих связностях (палитра не нужна — переменная здесь сам объект)."""
+    return ([make_each(n, same_color=s) for s in (False, True) for n in _INNER]
+            + [make_pick(k, same_color=s) for s in (False, True) for k in _PICK_RANKS])
 
 
 def instantiate_predicates(pairs: list) -> list[Primitive]:
-    """Условная переменная «какому объекту»: big/small/one × paint[палитра ∪ {0}]."""
+    """big/small/one × paint[палитра ∪ {0}] × обе связности."""
     actions = [parametric.make("paint", c) for c in parametric.task_palette(pairs) + [0]]
-    return [make_where(p, a) for p in _PREDS for a in actions]
+    return [make_where(p, a, same_color=s)
+            for s in (False, True) for p in _PREDS for a in actions]
 
 
 def _inner_by_name(name: str) -> Primitive | None:
@@ -136,16 +171,16 @@ def _inner_by_name(name: str) -> Primitive | None:
 
 
 def by_name(name: str) -> Primitive | None:
-    """«each[flip_h]» / «pick[2]» / «big[paint[3]]» → примитив (из имён состояния)."""
+    """«each[flip_h]» / «pickc[2]» / «bigc[paint[3]]» → примитив (из имён состояния)."""
     m = _EACH_RE.match(name)
-    if m and m.group(1) in _INNER:
-        return make_each(m.group(1))
+    if m and m.group(2) in _INNER:
+        return make_each(m.group(2), same_color=bool(m.group(1)))
     m = _PICK_RE.match(name)
     if m:
-        return make_pick(int(m.group(1)))
+        return make_pick(int(m.group(2)), same_color=bool(m.group(1)))
     m = _WHERE_RE.match(name)
     if m:
-        inner = _inner_by_name(m.group(2))
+        inner = _inner_by_name(m.group(3))
         if inner is not None:
-            return make_where(m.group(1), inner)
+            return make_where(m.group(1), inner, same_color=bool(m.group(2)))
     return None
