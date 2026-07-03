@@ -121,3 +121,44 @@ def test_mind_solves_per_object_task() -> None:
     res = mind.attempt("perobj", [(g1, want(g1)), (g2, want(g2))], effort=1)
     assert res["solved"] and mind.solutions["perobj"] == ["each[flip_h]"]
     assert mind.program_for("perobj")(g1) == want(g1)        # восстановление из имени
+
+
+def test_where_predicates_semantics() -> None:
+    from thinking_system.reasoning import object_param as op
+
+    g = to_grid([[3, 3, 3, 0, 7],
+                 [0, 0, 0, 0, 0],
+                 [2, 2, 0, 0, 5]])
+    # перекрась САМЫЙ БОЛЬШОЙ объект в 8; остальные не тронуты
+    big = op.by_name("big[paint[8]]").fn(g)
+    assert big == to_grid([[8, 8, 8, 0, 7], [0, 0, 0, 0, 0], [2, 2, 0, 0, 5]])
+    # перекрась самый маленький (первый из одиночек) — только он
+    small = op.by_name("small[paint[9]]").fn(g)
+    assert small == to_grid([[3, 3, 3, 0, 9], [0, 0, 0, 0, 0], [2, 2, 0, 0, 5]])
+    # сотри ВСЕ объекты размера 1
+    ones = op.by_name("one[paint[0]]").fn(g)
+    assert ones == to_grid([[3, 3, 3, 0, 0], [0, 0, 0, 0, 0], [2, 2, 0, 0, 0]])
+    assert op.by_name("big[чудо]") is None
+
+
+def test_predicates_instantiated_from_palette() -> None:
+    from thinking_system.reasoning import object_param as op
+
+    pairs = [(to_grid([[3, 0], [0, 7]]), to_grid([[8, 0], [0, 7]]))]
+    names = {p.name for p in op.instantiate_predicates(pairs)}
+    # палитра {3,7,8} ∪ {0} × предикаты {big,small,one}
+    assert "big[paint[8]]" in names and "one[paint[0]]" in names
+    assert len(names) == 3 * 4
+
+
+def test_mind_solves_predicate_task() -> None:
+    from thinking_system.mind import Mind
+
+    g1 = to_grid([[3, 3, 0, 7], [3, 0, 0, 0]])
+    g2 = to_grid([[0, 5, 0], [5, 5, 0], [0, 0, 2]])          # объекты разнесены: связность
+    want1 = to_grid([[8, 8, 0, 7], [8, 0, 0, 0]])            # без учёта цвета (как keep_largest)
+    want2 = to_grid([[0, 8, 0], [8, 8, 0], [0, 0, 2]])       # большой → 8
+    mind = Mind()
+    res = mind.attempt("recolor_big", [(g1, want1), (g2, want2)], effort=1)
+    assert res["solved"] and mind.solutions["recolor_big"] == ["big[paint[8]]"]
+    assert mind.program_for("recolor_big")(g1) == want1      # восстановление из имени

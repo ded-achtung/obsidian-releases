@@ -44,8 +44,9 @@ def evaluate(tasks: list[ArcTask], primitives: list[Primitive], *,
         extra = []
         if use_parametric:               # переменная-цвет связывается из палитры задачи
             extra += parametric.instantiate(list(t.train))
-        if use_objects:                  # переменная-объект: each[f] / pick[k]
+        if use_objects:                  # переменная-объект: each/pick + предикаты big/small/one
             extra += object_param.instantiate()
+            extra += object_param.instantiate_predicates(list(t.train))
         prims = primitives + [guard(p) for p in extra]
         prog, n = best_first_induce(list(t.train), prims, None,
                                     max_depth=max_depth, budget=budget)

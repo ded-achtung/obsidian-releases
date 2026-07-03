@@ -33,7 +33,7 @@ from thinking_system.reasoning.search_prior import best_first_induce
 from thinking_system.reasoning.templates import anti_unify, template_search
 
 # лестница размышления: (глубина, бюджет программ); дальше по лестнице = думать дольше
-LADDER = [(1, 600), (2, 8000), (3, 80000)]
+LADDER = [(1, 600), (2, 12000), (3, 120000)]
 
 
 class Mind:
@@ -116,7 +116,8 @@ class Mind:
         pairs = [(to_grid(i) if not isinstance(i, tuple) else i,
                   to_grid(o) if not isinstance(o, tuple) else o) for i, o in train_pairs]
         prims = self.prims + [guard(p) for p in
-                              parametric.instantiate(pairs) + object_param.instantiate()]
+                              parametric.instantiate(pairs) + object_param.instantiate()
+                              + object_param.instantiate_predicates(pairs)]
         weights = self._weights()
         checked_total = 0
         for depth, budget in LADDER[:effort]:
