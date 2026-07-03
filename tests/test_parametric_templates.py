@@ -58,3 +58,66 @@ def test_template_search_reaches_depth3_cheaply() -> None:
     prog, checked = template_search(pairs, tpls, seed)
     assert prog is not None and str(prog) == "flip_h ▸ flip_v ▸ transpose"
     assert checked <= len(seed)                              # цена — один слот, не глубина 3
+
+
+def test_each_applies_to_every_object_in_place() -> None:
+    from thinking_system.reasoning import object_param as op
+
+    # два объекта: Г-образный слева-сверху и палочка справа-снизу
+    g = to_grid([[1, 1, 0, 0],
+                 [1, 0, 0, 0],
+                 [0, 0, 2, 0],
+                 [0, 0, 2, 0]])
+    out = op.make_each("flip_h").fn(g)
+    assert out == to_grid([[1, 1, 0, 0],                     # каждый отражён В СВОЁМ боксе,
+                           [0, 1, 0, 0],                     # а не сетка целиком
+                           [0, 0, 2, 0],
+                           [0, 0, 2, 0]])
+    glob = to_grid([[0, 0, 1, 1], [0, 0, 0, 1], [0, 2, 0, 0], [0, 2, 0, 0]])
+    from thinking_system.reasoning.grids import flip_h
+    assert flip_h(g) == glob and out != glob                 # пообъектно ≠ глобально
+
+
+def test_each_rejects_size_changing_inner() -> None:
+    import pytest
+    from thinking_system.reasoning import object_param as op
+    from thinking_system.reasoning.structural import replicate_by_self
+
+    with pytest.raises(ValueError):
+        op.each_apply(to_grid([[1, 1], [0, 1]]), replicate_by_self)
+
+
+def test_pick_selects_kth_largest() -> None:
+    from thinking_system.reasoning import object_param as op
+
+    g = to_grid([[3, 3, 3, 0, 0],
+                 [0, 0, 0, 2, 2],
+                 [7, 0, 0, 0, 0]])
+    assert op.make_pick(2).fn(g) == to_grid([[0, 0, 0, 0, 0],
+                                             [0, 0, 0, 2, 2],
+                                             [0, 0, 0, 0, 0]])
+    import pytest
+    with pytest.raises(ValueError):
+        op.pick_apply(g, 4)                                  # объектов меньше k — честный отказ
+
+
+def test_object_by_name_roundtrip() -> None:
+    from thinking_system.reasoning import object_param as op
+
+    g = to_grid([[1, 1, 0], [1, 0, 0], [0, 0, 2]])
+    assert op.by_name("each[flip_v]").fn(g) == op.make_each("flip_v").fn(g)
+    assert op.by_name("pick[2]").fn(g) == op.make_pick(2).fn(g)
+    assert op.by_name("each[чудо]") is None and op.by_name("flip_h") is None
+
+
+def test_mind_solves_per_object_task() -> None:
+    from thinking_system.mind import Mind
+    from thinking_system.reasoning import object_param as op
+
+    g1 = to_grid([[1, 1, 0, 0], [1, 0, 0, 0], [0, 0, 2, 2], [0, 0, 0, 2]])
+    g2 = to_grid([[0, 5, 5], [0, 5, 0], [0, 0, 0]])
+    want = op.make_each("flip_h").fn
+    mind = Mind()
+    res = mind.attempt("perobj", [(g1, want(g1)), (g2, want(g2))], effort=1)
+    assert res["solved"] and mind.solutions["perobj"] == ["each[flip_h]"]
+    assert mind.program_for("perobj")(g1) == want(g1)        # восстановление из имени

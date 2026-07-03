@@ -31,18 +31,22 @@ from thinking_system.reasoning.search_prior import best_first_induce
 
 
 def evaluate(tasks: list[ArcTask], primitives: list[Primitive], *,
-             max_depth: int, budget: int, use_parametric: bool = False) -> dict:
+             max_depth: int, budget: int, use_parametric: bool = False,
+             use_objects: bool = False) -> dict:
     """Прогнать протокол по задачам; вернуть решения и статистику поиска."""
-    from thinking_system.reasoning import parametric
+    from thinking_system.reasoning import object_param, parametric
     from thinking_system.reasoning.grid_seed import guard
 
     found: dict[str, Program] = {}       # программа согласована со всеми train-парами
     correct: dict[str, Program] = {}     # …и точна на всех скрытых test-парах
     checked_total = 0
     for t in tasks:
-        prims = primitives
+        extra = []
         if use_parametric:               # переменная-цвет связывается из палитры задачи
-            prims = primitives + [guard(p) for p in parametric.instantiate(list(t.train))]
+            extra += parametric.instantiate(list(t.train))
+        if use_objects:                  # переменная-объект: each[f] / pick[k]
+            extra += object_param.instantiate()
+        prims = primitives + [guard(p) for p in extra]
         prog, n = best_first_induce(list(t.train), prims, None,
                                     max_depth=max_depth, budget=budget)
         checked_total += n
@@ -84,6 +88,8 @@ def main() -> None:
     ap.add_argument("--no-grow", action="store_true", help="без стадии роста библиотеки")
     ap.add_argument("--parametric", action="store_true",
                     help="+ параметрические примитивы keep/drop/paint по палитре задачи")
+    ap.add_argument("--objects", action="store_true",
+                    help="+ объектные переменные each[f] / pick[k]")
     args = ap.parse_args()
 
     seed = guarded_grid_seed()
@@ -91,11 +97,13 @@ def main() -> None:
     tasks = {s: load_arc(s, args.data_dir)[: args.limit] for s in splits}
     print(f"▶ Реальный ARC-AGI-1, протокол train-пары → скрытый test; "
           f"seed {len(seed)} примитивов, глубина {args.depth}, бюджет {args.budget}"
-          + (", + параметрические keep/drop/paint" if args.parametric else "") + "\n")
+          + (", + параметрические keep/drop/paint" if args.parametric else "")
+          + (", + объектные each/pick" if args.objects else "") + "\n")
 
     print("── Базовый замер (seed-библиотека) ──")
     base = {s: evaluate(tasks[s], seed, max_depth=args.depth, budget=args.budget,
-                        use_parametric=args.parametric) for s in splits}
+                        use_parametric=args.parametric, use_objects=args.objects)
+            for s in splits}
     for s in splits:
         report(s, base[s], len(tasks[s]))
 
@@ -114,7 +122,7 @@ def main() -> None:
 
     grown = evaluate(tasks["evaluation"], learner.lib.prims,
                      max_depth=args.depth, budget=args.budget,
-                     use_parametric=args.parametric)
+                     use_parametric=args.parametric, use_objects=args.objects)
     print("\n── Замер на ОТЛОЖЕННОМ сплите evaluation: seed vs выросшая библиотека ──")
     report("evaluation (seed)  ", base["evaluation"], len(tasks["evaluation"]))
     report("evaluation (grown) ", grown, len(tasks["evaluation"]))

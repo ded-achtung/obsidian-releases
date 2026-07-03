@@ -25,7 +25,7 @@ import os
 from collections import Counter
 
 from thinking_system.mind.lexicon import GridLexicon, parse_grid_definition, parse_grid_demo
-from thinking_system.reasoning import parametric
+from thinking_system.reasoning import object_param, parametric
 from thinking_system.reasoning.grid_seed import guard, guarded_grid_seed
 from thinking_system.reasoning.grids import Grid, to_grid
 from thinking_system.reasoning.induction import Primitive, Program
@@ -115,7 +115,8 @@ class Mind:
         """
         pairs = [(to_grid(i) if not isinstance(i, tuple) else i,
                   to_grid(o) if not isinstance(o, tuple) else o) for i, o in train_pairs]
-        prims = self.prims + [guard(p) for p in parametric.instantiate(pairs)]
+        prims = self.prims + [guard(p) for p in
+                              parametric.instantiate(pairs) + object_param.instantiate()]
         weights = self._weights()
         checked_total = 0
         for depth, budget in LADDER[:effort]:
@@ -196,11 +197,11 @@ class Mind:
     # ── внутреннее ─────────────────────────────────────────────────────────────────
 
     def _resolve(self, name: str) -> Primitive | None:
-        """Имя → примитив: библиотека агента или параметрическое семейство."""
+        """Имя → примитив: библиотека агента, параметрическое или объектное семейство."""
         for p in self.prims:
             if p.name == name:
                 return p
-        p = parametric.by_name(name)
+        p = parametric.by_name(name) or object_param.by_name(name)
         return guard(p) if p is not None else None
 
     def _add_abstraction(self, step_names: list[str]) -> bool:
