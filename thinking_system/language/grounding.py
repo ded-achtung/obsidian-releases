@@ -42,6 +42,29 @@ def generate_commands() -> list[tuple[str, int]]:
     return data
 
 
+def split_by_phrase(*, held_out_per_class: int = 2, seed: int = 0) -> tuple[list, list]:
+    """Сплит по ФРАЗАМ места, а не по командам: held-out фразы в train не встречаются.
+
+    Случайный сплит generate_commands() держит отложенными лишь новые КОМБИНАЦИИ
+    знакомых слов (все слова были в train) — это слабый тест. Здесь по каждой цели
+    часть формулировок целиком уходит в test: слова вроде «northwest» модель может
+    вообще не видеть. Это честная (и более трудная) проверка обобщения.
+    """
+    import numpy as np  # noqa: PLC0415
+
+    rng = np.random.default_rng(seed)
+    train: list[tuple[str, int]] = []
+    test: list[tuple[str, int]] = []
+    for cls, (_, phrases) in PLACES.items():
+        held = set(rng.choice(len(phrases), size=held_out_per_class, replace=False))
+        for pi, p in enumerate(phrases):
+            for v in VERBS:
+                dst = test if pi in held else train
+                dst.append((f"{v} {p}", cls))
+                dst.append((f"{v} the {p}", cls))
+    return train, test
+
+
 def tokenize(text: str) -> list[str]:
     return [w for w in re.split(r"[^a-z]+", text.lower()) if w]
 
@@ -68,6 +91,7 @@ class GoalClassifier:
     def __init__(self, bow: BagOfWords, n_classes: int = N_CLASSES, *, lr: float = 0.5) -> None:
         self.bow = bow
         self.C = n_classes
+        self.lr = lr
         self.W = np.zeros((bow.size, n_classes))
         self.b = np.zeros(n_classes)
 
@@ -84,8 +108,8 @@ class GoalClassifier:
         for _ in range(epochs):
             P = self._softmax(X @ self.W + self.b)
             g = (P - Y) / len(X)
-            self.W -= 0.5 * (X.T @ g)
-            self.b -= 0.5 * g.sum(axis=0)
+            self.W -= self.lr * (X.T @ g)
+            self.b -= self.lr * g.sum(axis=0)
 
     def predict(self, text: str) -> tuple[int, float]:
         p = self._softmax(self.bow.vec(text)[None] @ self.W + self.b)[0]

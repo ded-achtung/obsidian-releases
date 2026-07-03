@@ -15,6 +15,7 @@ import numpy as np
 
 from thinking_system.agent.acting import ActingAgent
 from thinking_system.world.gridworld import default_maze
+from thinking_system.world.maze_dist import random_maze
 from thinking_system.viz import sparkline
 
 
@@ -86,10 +87,29 @@ def main() -> None:
     print(f"Выученный путь к цели ({len(path) - 1} шагов, дошёл: {'да' if reached else 'нет'}):")
     render(env, path)
 
-    print("\n── Итог ──")
-    print(f"   Агент сам выучил карту незнакомого мира и довёл маршрут со {steps_hist[0]}")
-    print(f"   до {int(last5)} шагов (оптимум {opt}) — действуя по активному выводу:")
-    print("   исследование (эпистемика) → модель мира → достижение цели (прагматика).")
+    # held-out: тот же механизм на СВЕЖИХ лабиринтах из распределения —
+    # проверка, что результат не подогнан под одну ручную карту
+    n_fresh = 10
+    ratios, reach_cnt = [], 0
+    for seed in range(n_fresh):
+        fenv = random_maze(100 + seed)
+        fagent = ActingAgent(fenv.n_actions, fenv.goal_state, seed=seed)
+        for ep in range(episodes):
+            run_episode(fenv, fagent, epsilon=max(0.05, 0.5 * (0.88 ** ep)), max_steps=1500)
+        fpath = fagent.greedy_path(fenv.reset())
+        ok = bool(fpath) and fpath[-1] == fenv.goal_state
+        reach_cnt += ok
+        if ok:
+            ratios.append((len(fpath) - 1) / fenv.optimal_steps())
+    print(f"\nHELD-OUT: {n_fresh} свежих случайных лабиринтов, тот же механизм с нуля:")
+    print(f"   дошёл: {reach_cnt}/{n_fresh}; длина пути к оптимуму: "
+          f"×{np.mean(ratios):.2f} ± {np.std(ratios):.2f}")
+
+    print("\n── Итог (честно) ──")
+    print(f"   Агент выучил карту и довёл маршрут со {steps_hist[0]} до {int(last5)} шагов")
+    print(f"   (оптимум {opt}); механизм воспроизводится на свежих лабиринтах, а не подогнан")
+    print("   под одну карту. Но модель мира — ПРО-лабиринтная: в каждом новом мире агент")
+    print("   учится с нуля; перенос навыка между мирами — предмет run_transfer.py.")
 
 
 if __name__ == "__main__":
