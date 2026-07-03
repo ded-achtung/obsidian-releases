@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          pip install -e .
+          pip install pytest pymupdf
+      - name: Tests
+        run: pytest -q
+
+  smoke:
+    # быстрые демо запускаются целиком: ловим регрессии 50+ run-скриптов хотя бы по ядру
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: pip install -e .
+      - name: Smoke demos
+        run: |
+          python run_mvp.py
+          python run_benchmark.py
+          python run_grow_solutions.py
+          python run_grid_growth.py
+          python run_causal.py
+          python run_language.py
+          python run_world.py

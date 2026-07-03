@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from thinking_system.predictors.symbolic import SymbolicPredictor
 from thinking_system.text.dataset import eval_bpc, make_pairs, train_test_split, unigram_bpc, uniform_bpc
@@ -36,7 +37,7 @@ def test_load_md(tmp_path: Path) -> None:
 
 
 def test_load_pdf_roundtrip(tmp_path: Path) -> None:
-    fitz = __import__("fitz")
+    fitz = pytest.importorskip("fitz")     # без pymupdf тест скипается, а не падает
     doc = fitz.open()
     doc.new_page().insert_text((72, 72), "Lemma one plus one equals two")
     pdf = tmp_path / "b.pdf"

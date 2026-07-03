@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import json
 from collections import Counter
 
 from thinking_system.reasoning.induction import Program, Library, default_primitives
@@ -37,10 +38,15 @@ class LibraryLearner:
         return solutions
 
     def _by_name(self, name: str):
-        return next(p for p in self.lib.prims if p.name == name)
+        return next((p for p in self.lib.prims if p.name == name), None)
 
     def sleep(self, solutions: dict[int, Program], *, top: int = 1, min_count: int = 2) -> list[str]:
-        """Абстрагировать самые частые/сжимающие подпоследовательности решений в примитивы."""
+        """Абстрагировать самые частые/сжимающие подпоследовательности решений в примитивы.
+
+        Комбо с шагами, которых нет в текущей библиотеке (решение чужого решателя над
+        другим словарём), пропускаются молча — абстрагируется только то, что можно
+        собрать из известных примитивов.
+        """
         counts: Counter = Counter()
         for prog in solutions.values():
             names = [s.name for s in prog.steps]
@@ -51,10 +57,43 @@ class LibraryLearner:
         existing = {p.name for p in self.lib.prims}
         cands = [(seq, c) for seq, c in counts.items() if c >= min_count and "∘".join(seq) not in existing]
         added: list[str] = []
-        for seq, c in sorted(cands, key=lambda kv: -((kv[1] - 1) * (len(kv[0]) - 1)))[:top]:
-            prog = Program([self._by_name(n) for n in seq])
+        for seq, c in sorted(cands, key=lambda kv: -((kv[1] - 1) * (len(kv[0]) - 1))):
+            if len(added) >= top:
+                break
+            steps = [self._by_name(n) for n in seq]
+            if any(s is None for s in steps):                # шаг вне библиотеки
+                continue
             name = "∘".join(seq)
-            self.lib.add_abstraction(name, prog)
+            self.lib.add_abstraction(name, Program(steps))
+            added.append(name)
+        return added
+
+    # ── сериализация: рост переживает процесс ──────────────────────────────────
+    # Абстракция = последовательность имён шагов, поэтому библиотека восстановима
+    # поверх того же seed. Сохраняются только выученные комбо, не seed-примитивы.
+
+    def save(self, path: str) -> None:
+        """Сохранить выученные абстракции (имена-цепочки) в JSON."""
+        combos = [name.split("∘") for name in self.lib.abstractions]
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"abstractions": combos}, f, ensure_ascii=False, indent=1)
+
+    def load(self, path: str) -> list[str]:
+        """Восстановить абстракции поверх текущего seed; вернуть добавленные имена.
+
+        Комбо, чьи шаги неизвестны текущей библиотеке, пропускаются (это честное
+        поведение: библиотека растёт только из того, что умеет исполнить).
+        """
+        with open(path, encoding="utf-8") as f:
+            combos = json.load(f)["abstractions"]
+        existing = {p.name for p in self.lib.prims}
+        added: list[str] = []
+        for seq in combos:
+            name = "∘".join(seq)
+            steps = [self._by_name(n) for n in seq]
+            if name in existing or any(s is None for s in steps):
+                continue
+            self.lib.add_abstraction(name, Program(steps))
             added.append(name)
         return added
 

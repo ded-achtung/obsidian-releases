@@ -82,3 +82,36 @@ def test_grow_from_unique_solutions_as_learned_moves() -> None:
              Program([_prim(seed, "top_color"), _prim(seed, "mirror_quad")])]
     added = learner.grow_from_solutions(progs, top=2, min_count=1)
     assert set(added) == {"bbox∘fractal", "top_color∘mirror_quad"}        # обе уникальные композиции названы
+
+
+def test_grow_from_foreign_solution_skipped_not_crash() -> None:
+    # решение чужого решателя с примитивом вне библиотеки — пропуск, а не StopIteration
+    from thinking_system.reasoning.induction import Primitive
+
+    seed = full_grid_seed()
+    learner = LibraryLearner(seed)
+    alien = Primitive("alien_op", lambda g: g)
+    progs = [Program([alien, _prim(seed, "bbox")]),
+             Program([alien, _prim(seed, "bbox")]),
+             Program([_prim(seed, "bbox"), _prim(seed, "fractal")]),
+             Program([_prim(seed, "bbox"), _prim(seed, "fractal")])]
+    added = learner.grow_from_solutions(progs, top=2, min_count=2)
+    assert added == ["bbox∘fractal"]                        # чужое комбо пропущено молча
+
+
+def test_library_save_load_roundtrip(tmp_path) -> None:
+    # рост переживает процесс: сохранили комбо → восстановили поверх того же seed
+    seed = full_grid_seed()
+    learner = LibraryLearner(seed)
+    progs = [Program([_prim(seed, "bbox"), _prim(seed, "fractal")])] * 2
+    learner.grow_from_solutions(progs, top=1, min_count=2)
+    path = tmp_path / "lib.json"
+    learner.save(str(path))
+
+    fresh = LibraryLearner(full_grid_seed())
+    added = fresh.load(str(path))
+    assert added == ["bbox∘fractal"]
+    g = _pad0(((3, 3), (3, 3)))
+    restored = _prim(fresh.lib.prims, "bbox∘fractal")
+    original = _prim(learner.lib.prims, "bbox∘fractal")
+    assert restored.fn(g) == original.fn(g)                 # восстановленная операция работает
