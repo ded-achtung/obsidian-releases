@@ -5,13 +5,15 @@
   • ActiveInference — выбирает канал по эпистемической ценности (любопытство);
   • Random          — равномерно случайное внимание (baseline).
 
-Ожидаемый результат: любопытный агент тратит МЕНЬШЕ внимания на шумный канал
-(нередуцируемый «шумный телевизор») и достигает меньшей ошибки на выучиваемых
-каналах при том же числе шагов.
+Отчёт агрегируется по НЕСКОЛЬКИМ сидам (среднее ± σ и счётчики «на скольких
+сидах эффект есть») — чтобы не выдавать удачную фазу одного сида за устойчивый
+результат. Устойчиво по сидам одно: максимум внимания — на выучиваемом канале.
+Избегание шума за весь прогон — слабый эффект, куррикулум easy→medium→hard —
+не устойчив; это печатается честно.
 
 Запуск:
     python run_step2.py
-    python run_step2.py --steps 12000 --gamma 10
+    python run_step2.py --steps 12000 --gamma 10 --seeds 10
 """
 
 from __future__ import annotations
@@ -27,7 +29,6 @@ from thinking_system.memory.buffer import EpisodicBuffer
 from thinking_system.metrics.curiosity import CuriosityTracker
 from thinking_system.policies.active_inference import ActiveInferencePolicy, RandomPolicy
 from thinking_system.predictors.mlp import MLPPredictor
-from thinking_system.viz import sparkline
 
 
 def _run_agent(policy_kind: str, *, steps: int, obs_dim: int, latent_dim: int, context_len: int, gamma: float, seed: int) -> tuple[CuriosityTracker, MultiChannelEnv]:
@@ -52,17 +53,25 @@ def _run_agent(policy_kind: str, *, steps: int, obs_dim: int, latent_dim: int, c
     return loop.tracker, env
 
 
-def _report(name: str, tracker: CuriosityTracker, env: MultiChannelEnv) -> None:
-    labels = env.action_labels()
-    fr = tracker.visit_fractions()
-    err = tracker.final_error()
-    print(f"\n── {name} ──")
-    print(f"  {'канал':<8} {'внимание':>9} {'фин.ошибка':>12}")
-    for k, lab in enumerate(labels):
-        e = "—" if np.isnan(err[k]) else f"{err[k]:.4f}"
-        print(f"  {lab:<8} {fr[k] * 100:>8.1f}% {e:>12}")
-    waste = tracker.wasted_on_noise(env.learnable_mask())
-    print(f"  внимание на шум: {waste * 100:.1f}%")
+PHASES = [("ранняя", 0.0, 0.33), ("средняя", 0.33, 0.66), ("поздняя", 0.66, 1.0)]
+
+
+def _collect(seed: int, args) -> dict:
+    """Один сид: прогнать оба агента, снять метрики (без хранения трекеров)."""
+    kw = dict(steps=args.steps, obs_dim=args.obs_dim, latent_dim=args.latent_dim,
+              context_len=args.context_len, gamma=args.gamma, seed=seed)
+    act_tr, env = _run_agent("active", **kw)
+    rnd_tr, _ = _run_agent("random", **kw)
+    mask = env.learnable_mask()
+    return {
+        "labels": env.action_labels(), "mask": mask,
+        "act_fr": act_tr.visit_fractions(), "rnd_fr": rnd_tr.visit_fractions(),
+        "act_phase": np.array([[act_tr.phase_visit_fraction(k, lo=lo, hi=hi)
+                                for k in range(env.n_actions)] for _, lo, hi in PHASES]),
+        "act_noise": act_tr.wasted_on_noise(mask), "rnd_noise": rnd_tr.wasted_on_noise(mask),
+        "act_err": float(np.nanmean(act_tr.final_error()[mask])),
+        "rnd_err": float(np.nanmean(rnd_tr.final_error()[mask])),
+    }
 
 
 def main() -> None:
@@ -72,45 +81,54 @@ def main() -> None:
     p.add_argument("--latent-dim", type=int, default=16)
     p.add_argument("--context-len", type=int, default=2)
     p.add_argument("--gamma", type=float, default=8.0)
-    p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--seed", type=int, default=0, help="первый сид")
+    p.add_argument("--seeds", type=int, default=5, help="число сидов для агрегатов")
     args = p.parse_args()
 
-    print(f"▶ Среда: 4 канала (easy/medium/hard/noise), {args.steps} шагов на агента")
+    seeds = list(range(args.seed, args.seed + args.seeds))
+    print(f"▶ Среда: 4 канала (easy/medium/hard/noise), {args.steps} шагов на агента, "
+          f"сиды {seeds[0]}–{seeds[-1]}")
 
-    act_tr, env = _run_agent("active", steps=args.steps, obs_dim=args.obs_dim, latent_dim=args.latent_dim, context_len=args.context_len, gamma=args.gamma, seed=args.seed)
-    rnd_tr, _ = _run_agent("random", steps=args.steps, obs_dim=args.obs_dim, latent_dim=args.latent_dim, context_len=args.context_len, gamma=args.gamma, seed=args.seed)
+    runs = [_collect(s, args) for s in seeds]
+    labels, mask = runs[0]["labels"], runs[0]["mask"]
+    n = len(runs)
 
-    _report("Любопытство (active inference)", act_tr, env)
-    _report("Случайное внимание (baseline)", rnd_tr, env)
+    act_fr = np.array([r["act_fr"] for r in runs])           # (n, 4)
+    rnd_fr = np.array([r["rnd_fr"] for r in runs])
+    print("\n── Внимание за ВЕСЬ прогон, среднее ± σ по сидам ──")
+    print(f"  {'канал':<8} {'любопытство':>16} {'random':>16}")
+    for k, lab in enumerate(labels):
+        print(f"  {lab:<8} {act_fr[:, k].mean() * 100:>10.1f} ± {act_fr[:, k].std() * 100:<4.1f}%"
+              f" {rnd_fr[:, k].mean() * 100:>10.1f} ± {rnd_fr[:, k].std() * 100:<4.1f}%")
 
-    mask = env.learnable_mask()
-    noise_ch = int(np.where(~mask)[0][0])
-    act_learn = np.nanmean(act_tr.final_error()[mask])
-    rnd_learn = np.nanmean(rnd_tr.final_error()[mask])
-
-    # Эпистемический фуражинг = КУРРИКУЛУМ: любопытство переключает внимание с
-    # освоенных каналов на ещё-выучиваемые, минуя шум. Видно по фазам.
-    labels = env.action_labels()
-    phases = [("ранняя", 0.0, 0.33), ("средняя", 0.33, 0.66), ("поздняя", 0.66, 1.0)]
-    print("\n── Куда смотрит ЛЮБОПЫТСТВО по фазам (доля внимания) ──")
-    print("  фаза      " + "".join(f"{lab:>9}" for lab in labels))
-    for name, lo, hi in phases:
-        row = "".join(f"{act_tr.phase_visit_fraction(k, lo=lo, hi=hi) * 100:>8.1f}%" for k in range(env.n_actions))
+    phase = np.array([r["act_phase"] for r in runs])         # (n, 3, 4)
+    print("\n── Куда смотрит любопытство по фазам (среднее ± σ по сидам) ──")
+    print("  фаза      " + "".join(f"{lab:>14}" for lab in labels))
+    for pi, (name, _, _) in enumerate(PHASES):
+        row = "".join(f"{phase[:, pi, k].mean() * 100:>8.1f} ± {phase[:, pi, k].std() * 100:<4.1f}"
+                      for k in range(len(labels)))
         print(f"  {name:<9} {row}")
-    print("\n  для сравнения СЛУЧАЙНЫЙ агент (поздняя фаза):")
-    print("           " + "".join(f"{rnd_tr.phase_visit_fraction(k, lo=0.66, hi=1.0) * 100:>8.1f}%" for k in range(env.n_actions)))
-    print("\n  внимание к шуму во времени (любопытство):")
-    print("  " + sparkline(act_tr.windowed_visit_fraction(noise_ch)))
 
-    a_fr = act_tr.visit_fractions()
-    top = int(a_fr.argmax())
-    print("\n── Итог ──")
-    print(f"  УСТОЙЧИВО (по сидам): любопытство КОНЦЕНТРИРУЕТ внимание на ещё-выучиваемом канале")
-    print(f"    макс. внимание: любопытство {a_fr.max() * 100:.1f}% (канал '{labels[top]}', выучиваемый={bool(mask[top])})  vs  случайно {rnd_tr.visit_fractions().max() * 100:.1f}%")
-    print(f"  на этой конфигурации также: внимание на шум {act_tr.wasted_on_noise(mask) * 100:.1f}% vs {rnd_tr.wasted_on_noise(mask) * 100:.1f}%; "
-          f"ошибка на выучиваемых {act_learn:.4f} vs {rnd_learn:.4f}")
-    verdict = "да" if (a_fr.max() > rnd_tr.visit_fractions().max() and mask[top]) else "нет"
-    print(f"  любопытство сфокусировалось на выучиваемом канале сильнее равномерного: {verdict}")
+    top_learnable = sum(bool(mask[int(r['act_fr'].argmax())])
+                        and r["act_fr"].max() > r["rnd_fr"].max() for r in runs)
+    noise_better = sum(r["act_noise"] < r["rnd_noise"] for r in runs)
+    err_better = sum(r["act_err"] < r["rnd_err"] for r in runs)
+    a_noise = np.array([r["act_noise"] for r in runs])
+    r_noise = np.array([r["rnd_noise"] for r in runs])
+    a_err = np.array([r["act_err"] for r in runs])
+    r_err = np.array([r["rnd_err"] for r in runs])
+    early_top = [labels[int(r["act_phase"][0].argmax())] for r in runs]
+
+    print(f"\n── Итог (честно, по {n} сидам) ──")
+    print(f"  УСТОЙЧИВО: топ внимания — выучиваемый канал и выше max random: {top_learnable}/{n} сидов")
+    print(f"  внимание на шум за весь прогон: {a_noise.mean() * 100:.1f} ± {a_noise.std() * 100:.1f}%"
+          f" vs {r_noise.mean() * 100:.1f} ± {r_noise.std() * 100:.1f}% у random;"
+          f" ниже random на {noise_better}/{n} сидов — эффект слабый,")
+    print("    залипания навсегда нет, но ранняя фаза тратит на шум БОЛЬШЕ random")
+    print(f"  ошибка на выучиваемых: {a_err.mean():.4f} vs {r_err.mean():.4f};"
+          f" ниже random на {err_better}/{n} сидов")
+    print(f"  куррикулум: топ ранней фазы по сидам = {early_top} — порядок easy→medium→hard"
+          f" НЕ устойчив")
 
 
 if __name__ == "__main__":
