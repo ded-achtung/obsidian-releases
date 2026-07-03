@@ -84,3 +84,21 @@ def test_mind_consolidates_repeated_combos(tmp_path: Path) -> None:
     work = mind.idle_work()
     assert work["consolidated"] == ["bbox∘fractal"]
     assert "bbox∘fractal" in mind.abstractions
+
+
+def test_mind_uses_parametric_and_template_variables(tmp_path: Path) -> None:
+    mind = Mind(str(tmp_path / "m.json"))
+    # переменная-цвет из данных: «перекрась всё в 4» решается paint[4] на глубине 1
+    res = mind.attempt("paint", [([[3, 0], [0, 2]], [[4, 0], [0, 4]])], effort=1)
+    assert res["solved"] and mind.solutions["paint"] == ["paint[4]"]
+    # переменная-шаг из опыта: два трёхшаговых решения → шаблон, берущий глубину 3 дёшево
+    mind.solutions.update({"a": ["flip_h", "flip_v", "bbox"],
+                           "b": ["flip_h", "flip_v", "gravity"]})
+    g = to_grid([[3, 0, 2], [0, 3, 0]])
+    from thinking_system.reasoning.grids import transpose, flip_h, flip_v
+    want = transpose(flip_v(flip_h(g)))
+    res = mind.attempt("deep", [(g, want), (to_grid([[1, 2], [0, 4]]),
+                                            transpose(flip_v(flip_h(to_grid([[1, 2], [0, 4]])))))],
+                       effort=1)                            # глубины 1 не хватает — шаблон берёт
+    assert res["solved"] and res.get("via") == "template"
+    assert mind.program_for("deep")(g) == want
