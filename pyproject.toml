@@ -16,6 +16,7 @@ viz = ["matplotlib>=3.7"]
 dev = ["pytest>=7"]
 text = ["pymupdf>=1.24"]  # чтение PDF-книг (Markdown/txt работают без него)
 dl = ["torch>=2.0"]       # GPU/torch-бэкенд предикторов (тот же интерфейс)
+arc = ["arckit>=1.0"]     # датасет ARC-AGI-1 для run_arc.py (или JSON в data/arc/)
 
 [project.scripts]
 thinking-mvp = "run_mvp:main"
