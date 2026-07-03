@@ -27,10 +27,7 @@ def train_perception(grid, rng):
     jepa = LatentWorldModel(24, 4, latent_dim=16, lr=5e-4, var_coef=0.02, seed=0)
 
     def move(s, a):
-        r, c = divmod(s, grid.size)
-        dr, dc = GridWorld.MOVES[a]
-        nr, nc = r + dr, c + dc
-        return grid.sid((nr, nc)) if 0 <= nr < grid.size and 0 <= nc < grid.size and (nr, nc) not in grid.walls else s
+        return grid.move_sid(s, a)
 
     O, A, NO, s = [], [], [], grid.sid(grid.start)
     for _ in range(10000):

@@ -40,7 +40,7 @@ def bfs_plan(grid, start, goal):
 
 def main():
     grid = rooms_world(); goal = (6, 6); slip = 0.25
-    free = [(s // grid.size, s % grid.size) for s in range(grid.n_states) if (s // grid.size, s % grid.size) not in grid.walls]
+    free = grid.free_cells()
     env = StochasticGridEnv(grid, slip=slip, seed=0)
     print(f"▶ Скользкий мир-комнаты {grid.size}×{grid.size}, соскальзывание {slip:.0%}; цель {goal}\n")
 

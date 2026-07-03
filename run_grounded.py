@@ -17,15 +17,12 @@ from thinking_system.reasoning.grounded import observe, induce_dynamics, WorldRu
 
 
 def true_next(grid, s, a):
-    r, c = s
-    dr, dc = GridWorld.MOVES[a]
-    nr, nc = r + dr, c + dc
-    return (nr, nc) if 0 <= nr < grid.size and 0 <= nc < grid.size and (nr, nc) not in grid.walls else s
+    return grid.move_from(s, GridWorld.MOVES[a])
 
 
 def main():
     grid = rooms_world()
-    free = [(s // grid.size, s % grid.size) for s in range(grid.n_states) if (s // grid.size, s % grid.size) not in grid.walls]
+    free = grid.free_cells()
     print(f"▶ Агент в мире-комнатах {grid.size}×{grid.size}; правило динамики выводится ИЗ ЕГО наблюдений\n")
 
     steps = 20

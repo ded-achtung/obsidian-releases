@@ -97,17 +97,12 @@ class LatentQOption:
         self.alpha = alpha
         self.gamma = gamma
         self.step_penalty = step_penalty
-        self.free = [s for s in range(grid.n_states) if (s // grid.size, s % grid.size) not in grid.walls]
+        self.free = grid.free_sids()
         self.train_starts = train_starts if train_starts is not None else [s for s in self.free if s != subgoal]
         self.rng = np.random.default_rng(seed)
 
     def _move(self, s: int, a: int) -> int:
-        r, c = divmod(s, self.g.size)
-        dr, dc = GridWorld.MOVES[a]
-        nr, nc = r + dr, c + dc
-        if 0 <= nr < self.g.size and 0 <= nc < self.g.size and (nr, nc) not in self.g.walls:
-            return self.g.sid((nr, nc))
-        return s
+        return self.g.move_sid(s, a)
 
     def q(self, x: np.ndarray) -> np.ndarray:
         return self.W @ x

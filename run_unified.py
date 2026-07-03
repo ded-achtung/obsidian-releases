@@ -22,7 +22,7 @@ from thinking_system.world.partial import local_pattern
 def main():
     grid = unified_maze()
     size = grid.size
-    free = [s for s in range(grid.n_states) if (s // size, s % size) not in grid.walls]
+    free = grid.free_sids()
     patterns = sorted(set(local_pattern(grid, s) for s in free))
     pattern_classes = {p: i for i, p in enumerate(patterns)}
     dim = 16

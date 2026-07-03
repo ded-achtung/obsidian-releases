@@ -45,12 +45,7 @@ class AutotelicAgent:
         return self.free[int(np.argmin(((self.protos - z) ** 2).sum(axis=1)))]
 
     def _move(self, s: int, a: int) -> int:
-        r, c = divmod(s, self.g.size)
-        dr, dc = GridWorld.MOVES[a]
-        nr, nc = r + dr, c + dc
-        if 0 <= nr < self.g.size and 0 <= nc < self.g.size and (nr, nc) not in self.g.walls:
-            return self.g.sid((nr, nc))
-        return s
+        return self.g.move_sid(s, a)
 
     def reachable(self) -> set[int]:
         seen = {self.start}

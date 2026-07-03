@@ -48,10 +48,7 @@ def main():
     rng = np.random.default_rng(0)
 
     def move(s, a):
-        r, c = divmod(s, grid.size)
-        dr, dc = GridWorld.MOVES[a]
-        nr, nc = r + dr, c + dc
-        return grid.sid((nr, nc)) if 0 <= nr < grid.size and 0 <= nc < grid.size and (nr, nc) not in grid.walls else s
+        return grid.move_sid(s, a)
 
     O, A, NO, s = [], [], [], grid.sid(grid.start)
     for _ in range(10000):

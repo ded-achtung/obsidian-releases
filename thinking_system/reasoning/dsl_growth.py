@@ -28,16 +28,10 @@ class ShiftEnv:
     def __init__(self, grid: GridWorld, moves: list[tuple[int, int]]) -> None:
         self.g = grid
         self.moves = moves
-        self.free = [(s // grid.size, s % grid.size) for s in range(grid.n_states)
-                     if (s // grid.size, s % grid.size) not in grid.walls]
+        self.free = grid.free_cells()
 
     def transition(self, s: tuple[int, int], a: int) -> tuple[int, int]:
-        dr, dc = self.moves[a]
-        r, c = s
-        nr, nc = r + dr, c + dc
-        if 0 <= nr < self.g.size and 0 <= nc < self.g.size and (nr, nc) not in self.g.walls:
-            return (nr, nc)
-        return s
+        return self.g.move_from(s, self.moves[a])
 
 
 def synthesize_shift(name: str, moves: list[tuple[tuple[int, int], tuple[int, int]]]) -> Primitive | None:

@@ -25,17 +25,14 @@ def collect(grid, feats, n, *, seed):
     O, A, O2 = [], [], []
     for _ in range(n):
         a = int(rng.integers(4))
-        r, c = divmod(s, grid.size)
-        dr, dc = GridWorld.MOVES[a]
-        nr, nc = r + dr, c + dc
-        sp = grid.sid((nr, nc)) if (0 <= nr < grid.size and 0 <= nc < grid.size and (nr, nc) not in grid.walls) else s
+        sp = grid.move_sid(s, a)
         O.append(feats.observe(s)); A.append(a); O2.append(feats.observe(sp)); s = sp
     return np.array(O), np.array(A), np.array(O2)
 
 
 def main():
     grid = rooms_world()
-    free = [s for s in range(grid.n_states) if (s // grid.size, s % grid.size) not in grid.walls]
+    free = grid.free_sids()
     dim = 24
     feats = CellFeatures(grid.n_states, dim, noise=0.3, seed=0)
 

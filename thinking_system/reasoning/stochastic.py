@@ -27,18 +27,12 @@ class StochasticGridEnv:
         self.g = grid
         self.slip = slip
         self.rng = np.random.default_rng(seed)
-        self.free = [(s // grid.size, s % grid.size) for s in range(grid.n_states)
-                     if (s // grid.size, s % grid.size) not in grid.walls]
+        self.free = grid.free_cells()
 
     def transition(self, s: tuple[int, int], a: int) -> tuple[int, int]:
         if self.rng.random() < self.slip:
             a = int(self.rng.integers(4))                    # соскользнул на случайное направление
-        r, c = s
-        dr, dc = GridWorld.MOVES[a]
-        nr, nc = r + dr, c + dc
-        if 0 <= nr < self.g.size and 0 <= nc < self.g.size and (nr, nc) not in self.g.walls:
-            return (nr, nc)
-        return s
+        return self.g.move_from(s, GridWorld.MOVES[a])
 
 
 class ProbabilisticModel:
@@ -46,8 +40,7 @@ class ProbabilisticModel:
 
     def __init__(self, grid: GridWorld) -> None:
         self.g = grid
-        self.free = [(s // grid.size, s % grid.size) for s in range(grid.n_states)
-                     if (s // grid.size, s % grid.size) not in grid.walls]
+        self.free = grid.free_cells()
         self.counts: dict[tuple[tuple[int, int], int], Counter] = defaultdict(Counter)
         self.V: dict[tuple[int, int], float] = {}
         self.pi: dict[tuple[int, int], int] = {}

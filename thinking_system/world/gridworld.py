@@ -45,15 +45,40 @@ class GridWorld:
     def goal_state(self) -> int:
         return self.sid(self.goal)
 
+    # ── общая геометрия: ЕДИНСТВЕННОЕ место с логикой стен/границ/шага ──────────
+    # Все среды и агенты (полные, частичные, шумные, стохастические, со сдвигами)
+    # ходят через эти хелперы, а не через собственные копии проверки границ.
+
+    def in_bounds(self, cell: tuple[int, int]) -> bool:
+        return 0 <= cell[0] < self.size and 0 <= cell[1] < self.size
+
+    def is_free(self, cell: tuple[int, int]) -> bool:
+        """Клетка внутри границ и не стена."""
+        return self.in_bounds(cell) and cell not in self.walls
+
+    def move_from(self, cell: tuple[int, int], delta: tuple[int, int]) -> tuple[int, int]:
+        """Клетка + вектор смещения; упёрся в стену/границу — остался на месте."""
+        nxt = (cell[0] + delta[0], cell[1] + delta[1])
+        return nxt if self.is_free(nxt) else cell
+
+    def move_sid(self, s: int, action: int) -> int:
+        """То же в id состояний: шаг по MOVES[action]."""
+        return self.sid(self.move_from(divmod(s, self.size), self.MOVES[action]))
+
+    def free_cells(self) -> list[tuple[int, int]]:
+        """Свободные клетки в row-major порядке (канонический порядок для выборок)."""
+        return [(r, c) for r in range(self.size) for c in range(self.size)
+                if (r, c) not in self.walls]
+
+    def free_sids(self) -> list[int]:
+        return [self.sid(c) for c in self.free_cells()]
+
     def reset(self) -> int:
         self.pos = self.start
         return self.sid(self.pos)
 
     def step(self, action: int) -> tuple[int, bool]:
-        dr, dc = self.MOVES[action]
-        nr, nc = self.pos[0] + dr, self.pos[1] + dc
-        if 0 <= nr < self.size and 0 <= nc < self.size and (nr, nc) not in self.walls:
-            self.pos = (nr, nc)  # шаг; иначе упёрся в стену/границу — стоит на месте
+        self.pos = self.move_from(self.pos, self.MOVES[action])
         return self.sid(self.pos), self.pos == self.goal
 
     def optimal_steps(self) -> int:
@@ -61,14 +86,14 @@ class GridWorld:
         q = deque([(self.start, 0)])
         seen = {self.start}
         while q:
-            (r, c), d = q.popleft()
-            if (r, c) == self.goal:
+            cell, d = q.popleft()
+            if cell == self.goal:
                 return d
             for dr, dc in self.MOVES:
-                nr, nc = r + dr, c + dc
-                if 0 <= nr < self.size and 0 <= nc < self.size and (nr, nc) not in self.walls and (nr, nc) not in seen:
-                    seen.add((nr, nc))
-                    q.append(((nr, nc), d + 1))
+                nxt = (cell[0] + dr, cell[1] + dc)
+                if self.is_free(nxt) and nxt not in seen:
+                    seen.add(nxt)
+                    q.append((nxt, d + 1))
         return -1  # недостижимо
 
 

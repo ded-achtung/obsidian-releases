@@ -56,7 +56,7 @@ def main():
     env = default_maze()
     dim = 24
     feats = CellFeatures(env.n_states, dim, noise=0.30, seed=0)
-    free = [s for s in range(env.n_states) if (s // env.size, s % env.size) not in env.walls]
+    free = env.free_sids()
 
     O, A, O2, S, S2 = collect(env, feats, 9000, seed=1)
     print(f"▶ Мир-сетка {env.size}×{env.size}; наблюдение = признак клетки + шум (dim={dim}, шум 0.30)")

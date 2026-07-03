@@ -84,18 +84,13 @@ class GridSpectralDiscoverer:
 
     def __init__(self, grid: GridWorld, *, seed: int = 0) -> None:
         self.g = grid
-        self.free = [s for s in range(grid.n_states) if (s // grid.size, s % grid.size) not in grid.walls]
+        self.free = grid.free_sids()
         self.idx = {s: i for i, s in enumerate(self.free)}
         self.so = SpectralOptions(len(self.free))
         self.rng = np.random.default_rng(seed)
 
     def _move(self, s: int, a: int) -> int:
-        r, c = divmod(s, self.g.size)
-        dr, dc = GridWorld.MOVES[a]
-        nr, nc = r + dr, c + dc
-        if 0 <= nr < self.g.size and 0 <= nc < self.g.size and (nr, nc) not in self.g.walls:
-            return self.g.sid((nr, nc))
-        return s
+        return self.g.move_sid(s, a)
 
     def explore(self, steps: int) -> None:
         s = self.g.sid(self.g.start)

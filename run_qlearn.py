@@ -19,7 +19,7 @@ from thinking_system.viz import sparkline
 
 def main():
     grid = rooms_world()
-    free = [s for s in range(grid.n_states) if (s // grid.size, s % grid.size) not in grid.walls]
+    free = grid.free_sids()
     doorways = [grid.sid(c) for c in [(1, 3), (3, 1), (3, 5), (5, 3)]]
     print(f"▶ Мир-комнаты {grid.size}×{grid.size}; 4 опции-навыка к проёмам, обучаемые Q-learning\n")
 

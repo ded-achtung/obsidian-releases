@@ -30,8 +30,7 @@ class GridEnv:
 
     def __init__(self, grid: GridWorld, *, scramble_seed: int | None = None, n_scramble: int | None = None) -> None:
         self.g = grid
-        self.free = [(s // grid.size, s % grid.size) for s in range(grid.n_states)
-                     if (s // grid.size, s % grid.size) not in grid.walls]
+        self.free = grid.free_cells()
         self.perm: dict[tuple[int, int], np.ndarray] | None = None
         if scramble_seed is not None:
             rng = np.random.default_rng(scramble_seed)
@@ -42,12 +41,7 @@ class GridEnv:
     def transition(self, s: tuple[int, int], a: int) -> tuple[int, int]:
         if self.perm is not None and s in self.perm:
             a = int(self.perm[s][a])
-        r, c = s
-        dr, dc = GridWorld.MOVES[a]
-        nr, nc = r + dr, c + dc
-        if 0 <= nr < self.g.size and 0 <= nc < self.g.size and (nr, nc) not in self.g.walls:
-            return (nr, nc)
-        return s
+        return self.g.move_from(s, GridWorld.MOVES[a])
 
 
 class MetaAgent:

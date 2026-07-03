@@ -31,8 +31,7 @@ class ReasoningAgent:
 
     def __init__(self, grid: GridWorld, *, seed: int = 0) -> None:
         self.g = grid
-        self.free = [(s // grid.size, s % grid.size) for s in range(grid.n_states)
-                     if (s // grid.size, s % grid.size) not in grid.walls]
+        self.free = grid.free_cells()
         self.idx = {c: i for i, c in enumerate(self.free)}
         self.model: WorldRule | None = None
         self.observations = 0

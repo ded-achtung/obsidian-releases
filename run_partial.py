@@ -50,7 +50,7 @@ def run_memoryless(grid, true_start, *, max_steps=300, seed=0):
 
 def main():
     grid = default_maze()
-    free = [s for s in range(grid.n_states) if (s // grid.size, s % grid.size) not in grid.walls and s != grid.goal_state]
+    free = [s for s in grid.free_sids() if s != grid.goal_state]
 
     cnt = Counter(local_pattern(grid, s) for s in free)
     start = max(free, key=lambda s: cnt[local_pattern(grid, s)])  # самый неоднозначный старт

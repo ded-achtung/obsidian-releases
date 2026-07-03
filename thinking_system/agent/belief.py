@@ -34,7 +34,7 @@ class BeliefAgent:
 
     def __init__(self, grid: GridWorld, *, localized_thresh: float = 0.6, seed: int = 0) -> None:
         self.g = grid
-        self.free = [s for s in range(grid.n_states) if (s // grid.size, s % grid.size) not in grid.walls]
+        self.free = grid.free_sids()
         self.idx = {s: i for i, s in enumerate(self.free)}
         self.F = len(self.free)
         self.obs = [local_pattern(grid, s) for s in self.free]
@@ -44,11 +44,8 @@ class BeliefAgent:
 
         self.move = np.zeros((self.F, 4), dtype=int)  # модель перехода (по карте)
         for i, s in enumerate(self.free):
-            r, c = divmod(s, grid.size)
-            for a, (dr, dc) in enumerate(GridWorld.MOVES):
-                nr, nc = r + dr, c + dc
-                free = 0 <= nr < grid.size and 0 <= nc < grid.size and (nr, nc) not in grid.walls
-                self.move[i, a] = self.idx[grid.sid((nr, nc))] if free else i
+            for a in range(4):
+                self.move[i, a] = self.idx[grid.move_sid(s, a)]
 
         self.b = np.ones(self.F) / self.F
         self.set_goal(grid.goal_state)

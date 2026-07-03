@@ -15,17 +15,17 @@ from thinking_system.world.gridworld import GridWorld
 
 
 def _all_connected(size: int, walls: set[tuple[int, int]], start: tuple[int, int]) -> bool:
-    free = {(r, c) for r in range(size) for c in range(size) if (r, c) not in walls}
+    g = GridWorld(size, walls, start=start, goal=start)
     seen = {start}
     q = deque([start])
     while q:
-        r, c = q.popleft()
+        cell = q.popleft()
         for dr, dc in GridWorld.MOVES:
-            nr, nc = r + dr, c + dc
-            if (nr, nc) in free and (nr, nc) not in seen:
-                seen.add((nr, nc))
-                q.append((nr, nc))
-    return seen == free
+            nxt = (cell[0] + dr, cell[1] + dc)
+            if g.is_free(nxt) and nxt not in seen:
+                seen.add(nxt)
+                q.append(nxt)
+    return seen == set(g.free_cells())
 
 
 def random_maze(seed: int, *, size: int = 7, n_walls: int = 8,

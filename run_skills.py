@@ -19,7 +19,7 @@ from thinking_system.world.rooms import rooms_world
 
 def main():
     grid = rooms_world()
-    free = [s for s in range(grid.n_states) if (s // grid.size, s % grid.size) not in grid.walls]
+    free = grid.free_sids()
     mem = HierarchicalMemory(grid)
     mem.explore(20000, seed=0)
     mem.consolidate(n_landmarks=4)

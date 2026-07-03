@@ -20,7 +20,7 @@ from thinking_system.language.doorways import train_doorway_classifier, accuracy
 
 def main():
     grid = rooms_world()
-    free = [s for s in range(grid.n_states) if (s // grid.size, s % grid.size) not in grid.walls]
+    free = grid.free_sids()
     doorways = [grid.sid(DOORWAYS[i][0]) for i in range(4)]
     print(f"▶ Мир-комнаты {grid.size}×{grid.size}; 4 опции-навыка к проёмам + грунтинг команд\n")
 

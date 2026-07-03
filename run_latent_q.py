@@ -24,10 +24,7 @@ from thinking_system.viz import sparkline
 
 
 def _move(grid, s, a):
-    r, c = divmod(s, grid.size)
-    dr, dc = GridWorld.MOVES[a]
-    nr, nc = r + dr, c + dc
-    return grid.sid((nr, nc)) if 0 <= nr < grid.size and 0 <= nc < grid.size else s
+    return grid.move_sid(s, a)  # стен в открытой комнате нет
 
 
 def main():

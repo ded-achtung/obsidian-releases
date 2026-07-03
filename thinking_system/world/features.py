@@ -38,9 +38,5 @@ class FeatureWorld:
         return self.f.observe(self.true)
 
     def step(self, action: int) -> tuple[np.ndarray, bool]:
-        r, c = divmod(self.true, self.g.size)
-        dr, dc = GridWorld.MOVES[action]
-        nr, nc = r + dr, c + dc
-        if 0 <= nr < self.g.size and 0 <= nc < self.g.size and (nr, nc) not in self.g.walls:
-            self.true = self.g.sid((nr, nc))
+        self.true = self.g.move_sid(self.true, action)
         return self.f.observe(self.true), self.true == self.g.goal_state

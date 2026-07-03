@@ -36,7 +36,7 @@ def first_full(reach, n_free):
 
 def main():
     grid = default_maze()
-    n_free = len([s for s in range(grid.n_states) if (s // grid.size, s % grid.size) not in grid.walls])
+    n_free = len(grid.free_sids())
     episodes = 200
     print(f"▶ Лабиринт {grid.size}×{grid.size}, {n_free} клеток; агент сам ставит себе цели\n")
 

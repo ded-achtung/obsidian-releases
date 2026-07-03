@@ -30,16 +30,11 @@ class QOption:
         self.gamma = gamma
         self.step_penalty = step_penalty
         self.Q = np.zeros((grid.n_states, 4))
-        self.free = [s for s in range(grid.n_states) if (s // grid.size, s % grid.size) not in grid.walls]
+        self.free = grid.free_sids()
         self.rng = np.random.default_rng(seed)
 
     def _move(self, s: int, a: int) -> int:
-        r, c = divmod(s, self.g.size)
-        dr, dc = GridWorld.MOVES[a]
-        nr, nc = r + dr, c + dc
-        if 0 <= nr < self.g.size and 0 <= nc < self.g.size and (nr, nc) not in self.g.walls:
-            return self.g.sid((nr, nc))
-        return s
+        return self.g.move_sid(s, a)
 
     def policy(self, s: int) -> int:
         return int(np.argmax(self.Q[s]))

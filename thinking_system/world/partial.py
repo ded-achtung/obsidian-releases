@@ -13,12 +13,8 @@ from thinking_system.world.gridworld import GridWorld
 def local_pattern(grid: GridWorld, state: int) -> tuple[int, int, int, int]:
     """4-битный локальный обзор: 1 = у соседа стена/край, 0 = свободно (↑ ↓ ← →)."""
     r, c = divmod(state, grid.size)
-    bits = []
-    for dr, dc in GridWorld.MOVES:
-        nr, nc = r + dr, c + dc
-        free = 0 <= nr < grid.size and 0 <= nc < grid.size and (nr, nc) not in grid.walls
-        bits.append(0 if free else 1)
-    return tuple(bits)  # type: ignore[return-value]
+    return tuple(0 if grid.is_free((r + dr, c + dc)) else 1
+                 for dr, dc in GridWorld.MOVES)  # type: ignore[return-value]
 
 
 class PartialGridWorld:
@@ -33,9 +29,5 @@ class PartialGridWorld:
         return local_pattern(self.g, self.true)
 
     def step(self, action: int) -> tuple[tuple[int, int, int, int], bool]:
-        r, c = divmod(self.true, self.g.size)
-        dr, dc = GridWorld.MOVES[action]
-        nr, nc = r + dr, c + dc
-        if 0 <= nr < self.g.size and 0 <= nc < self.g.size and (nr, nc) not in self.g.walls:
-            self.true = self.g.sid((nr, nc))
+        self.true = self.g.move_sid(self.true, action)
         return local_pattern(self.g, self.true), self.true == self.g.goal_state

@@ -46,12 +46,7 @@ class MegaAgent:
         return self.free[i]
 
     def _move(self, s: int, a: int) -> int:
-        r, c = divmod(s, self.g.size)
-        dr, dc = GridWorld.MOVES[a]
-        nr, nc = r + dr, c + dc
-        if 0 <= nr < self.g.size and 0 <= nc < self.g.size and (nr, nc) not in self.g.walls:
-            return self.g.sid((nr, nc))
-        return s
+        return self.g.move_sid(s, a)
 
     def _dist_to(self, goal: int) -> dict[int, int]:
         """Расстояния до цели по ВЫУЧЕННОЙ карте (mem.map)."""

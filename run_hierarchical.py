@@ -32,9 +32,9 @@ def bfs_dist(grid, start, goal):
             return d
         r, c = divmod(u, grid.size)
         for dr, dc in GridWorld.MOVES:
-            nr, nc = r + dr, c + dc
-            if 0 <= nr < grid.size and 0 <= nc < grid.size and (nr, nc) not in grid.walls:
-                v = grid.sid((nr, nc))
+            nxt = (r + dr, c + dc)
+            if grid.is_free(nxt):
+                v = grid.sid(nxt)
                 if v not in prev:
                     prev[v] = u
                     q.append(v)
@@ -43,7 +43,7 @@ def bfs_dist(grid, start, goal):
 
 def main():
     grid = rooms_world()
-    free = [s for s in range(grid.n_states) if (s // grid.size, s % grid.size) not in grid.walls]
+    free = grid.free_sids()
     mem = HierarchicalMemory(grid)
     mem.explore(20000, seed=0)
     mem.consolidate(n_landmarks=4)

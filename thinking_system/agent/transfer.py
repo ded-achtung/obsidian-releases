@@ -20,12 +20,7 @@ from thinking_system.agent.latent_qoption import LatentQOption
 
 
 def _move(grid: GridWorld, s: int, a: int) -> int:
-    r, c = divmod(s, grid.size)
-    dr, dc = GridWorld.MOVES[a]
-    nr, nc = r + dr, c + dc
-    if 0 <= nr < grid.size and 0 <= nc < grid.size and (nr, nc) not in grid.walls:
-        return grid.sid((nr, nc))
-    return s
+    return grid.move_sid(s, a)
 
 
 def transfer_option(grid: GridWorld, subgoal_cell: tuple[int, int], encode, n_features: int, W: np.ndarray, *,
