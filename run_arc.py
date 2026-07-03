@@ -24,25 +24,10 @@ import argparse
 from collections import Counter
 
 from thinking_system.reasoning.arc_data import ArcTask, load_arc
-from thinking_system.reasoning.grid_seed import full_grid_seed
+from thinking_system.reasoning.grid_seed import guarded_grid_seed
 from thinking_system.reasoning.induction import Primitive, Program
 from thinking_system.reasoning.library_learning import LibraryLearner
 from thinking_system.reasoning.search_prior import best_first_induce
-
-
-MAX_CELLS = 10_000                       # выходы ARC ≤ 30×30 = 900 клеток; куда больший
-                                         # промежуточный взрыв (fractal∘fractal) — тупик
-
-
-def _guarded(p: Primitive) -> Primitive:
-    """Примитив с ограничителем: гигантская промежуточная сетка = недопустимый шаг."""
-    def fn(g, _f=p.fn):
-        out = _f(g)
-        if isinstance(out, tuple) and out and isinstance(out[0], tuple) \
-                and len(out) * len(out[0]) > MAX_CELLS:
-            raise ValueError("сетка слишком велика")
-        return out
-    return Primitive(p.name, fn, p.cost)
 
 
 def evaluate(tasks: list[ArcTask], primitives: list[Primitive], *,
@@ -93,7 +78,7 @@ def main() -> None:
     ap.add_argument("--no-grow", action="store_true", help="без стадии роста библиотеки")
     args = ap.parse_args()
 
-    seed = [_guarded(p) for p in full_grid_seed()]
+    seed = guarded_grid_seed()
     splits = ["training", "evaluation"] if args.split == "both" else [args.split]
     tasks = {s: load_arc(s, args.data_dir)[: args.limit] for s in splits}
     print(f"▶ Реальный ARC-AGI-1, протокол train-пары → скрытый test; "
