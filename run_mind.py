@@ -50,7 +50,10 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=None, help="первые N задач evaluation")
     ap.add_argument("--effort", type=int, default=2, help="ступеней лестницы размышления (1-3)")
     ap.add_argument("--state", default="mind_state.json")
-    ap.add_argument("--textbook", default=os.path.join("books", "textbook_grids.md"))
+    ap.add_argument("--library", nargs="+",
+                    default=[os.path.join("books", "textbook_grids_2.md"),
+                             os.path.join("books", "notes_grids.md"),
+                             os.path.join("books", "textbook_grids.md")])
     ap.add_argument("--data-dir", default=None)
     args = ap.parse_args()
 
@@ -59,10 +62,13 @@ def main() -> None:
 
     tasks = {t.task_id: t for t in load_arc("evaluation", args.data_dir)[: args.limit]}
     stream = [{"id": tid, "train": list(t.train)} for tid, t in tasks.items()]
-    with open(args.textbook, encoding="utf-8") as f:
-        textbook = f.read()
+    library = {}
+    for path in args.library:
+        with open(path, encoding="utf-8") as f:
+            library[os.path.basename(path)] = f.read()
 
-    print(f"▶ Единый агент • реальный ARC-AGI-1 evaluation ({len(tasks)} задач) + учебник\n")
+    print(f"▶ Единый агент • реальный ARC-AGI-1 evaluation ({len(tasks)} задач) "
+          f"+ библиотека из {len(library)} текстов\n")
 
     # ── СЕССИЯ 1 ─────────────────────────────────────────────────────────────────
     mind = Mind(args.state)
@@ -80,11 +86,16 @@ def main() -> None:
         print(f"   глубина размышления по решённым: {dict(sorted(depth_counts.items()))} "
               f"(бюджет эскалирует по лестнице, а не фиксирован)")
 
-    print(f"\n2) Учебник: агент маршрутизирует опыт сам (перцепция → «текст»)")
-    res = mind.experience(textbook)
-    print(f"   заземлил слова индукцией из показов: {res['выучено_слов']}")
-    print(f"   определения выросли в операции: {res['определено']} → "
-          f"библиотека {len(mind.abstractions)} абстракций: {mind.abstractions}")
+    print(f"\n2) БИБЛИОТЕКА (порядок чтения агент выбирает САМ по эпистемической ценности):")
+    for entry in mind.study_library(library):
+        if "пропущено" in entry:
+            print(f"   пропустил {entry['пропущено']}: {entry['причина']}")
+            continue
+        print(f"   выбрал «{entry['выбрано']}» (ценность {entry['ценность']}): "
+              f"показы {entry['выучено_слов']}, определения {entry['определено']}"
+              + (f", вопросы {entry['вопросы']}" if entry["вопросы"] else ""))
+    print(f"   библиотека: {len(mind.abstractions)} абстракций {mind.abstractions}; "
+          f"словарь {len(mind.lexicon.words)} слов; вопросы агента: {mind.questions}")
 
     print(f"\n3) Повестка агента: {mind.agenda()}")
     work = mind.idle_work(effort=args.effort)
@@ -123,7 +134,11 @@ def main() -> None:
     print("   одиночкам», всё в двух связностях: цветослепой и одноцветной ...c)")
     print("   и шаблоны с дыркой из анти-унификации")
     print("   накопленных решений (им нужны РАЗНООБРАЗНЫЕ глубокие решения, пока их мало).")
-    print("   НЕ показано: открытый словарь, самостоятельный выбор ЧТО читать.")
+    print("   ЧТО читать, агент выбирает сам (эпистемическая ценность, куррикулум")
+    print("   возникает из переоценки после каждого текста); незаземлённые слова честно")
+    print("   копятся ВОПРОСАМИ в повестке. Словарь по-прежнему из контролируемых")
+    print("   учебников — полноценный открытый словарь (морфология, свободная проза)")
+    print("   не показан.")
 
 
 if __name__ == "__main__":

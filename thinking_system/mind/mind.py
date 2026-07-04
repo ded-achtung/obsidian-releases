@@ -24,7 +24,8 @@ import json
 import os
 from collections import Counter
 
-from thinking_system.mind.lexicon import GridLexicon, parse_grid_definition, parse_grid_demo
+from thinking_system.mind.lexicon import (GridLexicon, definition_gaps, parse_grid_alias,
+                                          parse_grid_definition, parse_grid_demo)
 from thinking_system.reasoning import object_param, parametric
 from thinking_system.reasoning.deep_search import bigram_prior, guided_induce
 from thinking_system.reasoning.grid_seed import guard, guarded_grid_seed
@@ -48,6 +49,7 @@ class Mind:
         self.lexicon = GridLexicon(self.prims)
         self.solutions: dict[str, list[str]] = {}            # задача → имена шагов решения
         self.unsolved: dict[str, list] = {}                  # задача → train-пары (для повестки)
+        self.questions: list[str] = []                       # слова, которые встретил, но не заземлил
         self.texts_read: list[str] = []
         self._dirty_since_retry = False
         self.state_path = state_path
@@ -78,10 +80,11 @@ class Mind:
 
     # ── способность: чтение (текст → словарь → библиотека) ─────────────────────────
 
-    def read(self, text: str) -> dict:
-        """Учебник: показы заземляют слова индукцией, определения растят библиотеку."""
+    @staticmethod
+    def _scan(text: str) -> tuple[dict, list[str]]:
+        """Разбор текста БЕЗ обучения: (показы по словам, прочие строки)."""
         demos: dict[str, list] = {}
-        maybe_defs: list[str] = []
+        others: list[str] = []
         for raw in text.splitlines():
             line = raw.strip()
             if not line or line.startswith("#"):
@@ -91,19 +94,80 @@ class Mind:
                 w, gin, gout = demo
                 demos.setdefault(w, []).append((gin, gout))
             else:
-                maybe_defs.append(line)
+                others.append(line)
+        return demos, others
+
+    def peek(self, text: str) -> dict:
+        """Эпистемическая ценность текста БЕЗ обучения: сколько нового он даст СЕЙЧАС.
+
+        Ценность = новые заземляемые слова (показы) + определения/синонимы,
+        собираемые из известного (с учётом слов, которые станут известны из
+        показов этого же текста и цепочек определений внутри него).
+        """
+        demos, others = self._scan(text)
+        new_words = [w for w in demos if w not in self.lexicon.words]
+        known = set(self.lexicon.words) | set(demos)
+        groundable: list[str] = []
+        changed = True
+        while changed:                                       # определения могут опираться друг на друга
+            changed = False
+            for line in others:
+                parsed = parse_grid_definition(line, known) or parse_grid_alias(line, known)
+                if parsed and parsed[0] not in known:
+                    known.add(parsed[0])
+                    groundable.append(parsed[0])
+                    changed = True
+        gaps = sorted({w for line in others for w in definition_gaps(line, known)})
+        return {"value": len(new_words) + len(groundable),
+                "new_words": new_words, "groundable": groundable, "gaps": gaps}
+
+    def read(self, text: str) -> dict:
+        """Учебник: показы заземляют слова индукцией, определения/синонимы растят язык."""
+        demos, others = self._scan(text)
         learned = [w for w, ex in demos.items() if self.lexicon.learn(w, ex)]
         defined: list[str] = []
-        for line in maybe_defs:                              # определения — после заземления слов
-            parsed = parse_grid_definition(line, set(self.lexicon.words))
-            if parsed and self.lexicon.define(*parsed):
-                word = parsed[0]
-                defined.append(word)
-                self._add_abstraction(self.lexicon.words[word])
+        changed = True
+        while changed:                                       # цепочки определений внутри текста
+            changed = False
+            for line in others:
+                known = set(self.lexicon.words)
+                parsed = parse_grid_definition(line, known)
+                if parsed and parsed[0] not in known and self.lexicon.define(*parsed):
+                    defined.append(parsed[0])
+                    self._add_abstraction(self.lexicon.words[parsed[0]])
+                    changed = True
+                    continue
+                alias = parse_grid_alias(line, known)
+                if alias and self.lexicon.define(alias[0], [alias[1]]):
+                    defined.append(alias[0])
+                    changed = True
+        known = set(self.lexicon.words)
+        gaps = {w for line in others for w in definition_gaps(line, known)}
+        self.questions = sorted((set(self.questions) | gaps) - known)  # выученное — не вопрос
         self.texts_read.append(text[:60])
-        if defined:
+        if defined or learned:
             self._dirty_since_retry = True
-        return {"выучено_слов": learned, "определено": defined}
+        return {"выучено_слов": learned, "определено": defined,
+                "вопросы": sorted(gaps - known)}
+
+    def study_library(self, library: dict[str, str]) -> list[dict]:
+        """ЛЮБОПЫТСТВО над библиотекой: читать в порядке эпистемической ценности.
+
+        На каждом шаге агент заново оценивает непрочитанные тексты (чтение
+        одного меняет ценность других — куррикулум возникает сам) и честно
+        останавливается, когда выучить больше нечего.
+        """
+        unread = dict(library)
+        log: list[dict] = []
+        while unread:
+            peeks = {t: self.peek(x) for t, x in unread.items()}
+            best = max(peeks, key=lambda t: peeks[t]["value"])
+            if peeks[best]["value"] == 0:
+                log.append({"пропущено": sorted(unread), "причина": "ничего выучить"})
+                break
+            log.append({"выбрано": best, "ценность": peeks[best]["value"],
+                        **self.read(unread.pop(best))})
+        return log
 
     # ── способность: решение грид-задачи с эскалацией размышления ──────────────────
 
@@ -161,6 +225,9 @@ class Mind:
             plan.append(f"вернуться к нерешённому ({len(self.unsolved)}) — язык вырос")
         if self._repeated_combos():
             plan.append("консолидировать повторяющиеся комбо из своих решений")
+        if self.questions:
+            plan.append(f"открытые вопросы ({len(self.questions)}): "
+                        + ", ".join(f"что такое «{w}»" for w in self.questions[:3]))
         return plan
 
     def idle_work(self, *, effort: int = 2) -> dict:
@@ -186,6 +253,7 @@ class Mind:
                  "lexicon": self.lexicon.words,
                  "solutions": self.solutions,
                  "unsolved": self.unsolved,
+                 "questions": self.questions,
                  "texts_read": self.texts_read}
         with open(path, "w", encoding="utf-8") as f:
             json.dump(state, f, ensure_ascii=False, indent=1)
@@ -199,6 +267,7 @@ class Mind:
         self.lexicon.words.update(state["lexicon"])
         self.solutions.update(state["solutions"])
         self.unsolved.update(state["unsolved"])
+        self.questions = state.get("questions", [])
         self.texts_read = state.get("texts_read", [])
 
     # ── внутреннее ─────────────────────────────────────────────────────────────────

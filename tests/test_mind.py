@@ -102,3 +102,51 @@ def test_mind_uses_parametric_and_template_variables(tmp_path: Path) -> None:
                        effort=1)                            # глубины 1 не хватает — шаблон берёт
     assert res["solved"] and res.get("via") == "template"
     assert mind.program_for("deep")(g) == want
+
+
+LIB_BASE = """
+отражение [[1, 2], [3, 4]] → [[2, 1], [4, 3]]
+отражение [[5, 0, 6]] → [[6, 0, 5]]
+переворот [[1, 2], [3, 4]] → [[3, 4], [1, 2]]
+переворот [[7], [8]] → [[8], [7]]
+"""
+LIB_ADV = """
+поворот это сначала отражение потом переворот
+зеркалирование значит отражение
+инверсия это сначала обращение потом отражение
+"""
+LIB_NOISE = """
+Головоломки на квадратных полях известны с древности.
+Никаких новых операций в заметках не вводится.
+"""
+
+
+def test_peek_value_changes_with_knowledge(tmp_path: Path) -> None:
+    mind = Mind(str(tmp_path / "m.json"))
+    # до базового учебника продвинутый ничего не даёт (его слова не заземлить)
+    assert mind.peek(LIB_ADV)["value"] == 0
+    assert mind.peek(LIB_NOISE)["value"] == 0
+    assert mind.peek(LIB_BASE)["value"] == 2                 # два новых показа
+    mind.read(LIB_BASE)
+    peek = mind.peek(LIB_ADV)                                # теперь определения собираются
+    assert peek["value"] == 2 and set(peek["groundable"]) == {"поворот", "зеркалирование"}
+    assert peek["gaps"] == ["обращение"]                     # незаземлимое слово — вопрос
+
+
+def test_study_library_orders_by_curiosity_and_skips(tmp_path: Path) -> None:
+    mind = Mind(str(tmp_path / "m.json"))
+    log = mind.study_library({"adv": LIB_ADV, "noise": LIB_NOISE, "base": LIB_BASE})
+    chosen = [e.get("выбрано") for e in log if "выбрано" in e]
+    assert chosen == ["base", "adv"]                         # куррикулум возник сам
+    assert log[-1].get("пропущено") == ["noise"]             # бесполезное честно пропущено
+    assert "поворот" in mind.lexicon.words and mind.abstractions == ["flip_h∘flip_v"]
+    assert mind.lexicon.words["зеркалирование"] == ["flip_h"]  # синоним через «значит»
+    assert mind.questions == ["обращение"]                   # открытый вопрос в состоянии
+    assert any("обращение" in a for a in mind.agenda())      # …и в повестке
+
+    # вопросы переживают процесс и снимаются, когда слово наконец объяснено
+    mind.save()
+    mind2 = Mind(str(tmp_path / "m.json"))
+    assert mind2.questions == ["обращение"]
+    mind2.read("обращение [[1, 2]] → [[2, 1]]\nобращение [[3], [4]] → [[3], [4]]")
+    assert mind2.questions == []                             # вопрос закрыт показом

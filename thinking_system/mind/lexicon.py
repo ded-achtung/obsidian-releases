@@ -69,6 +69,28 @@ def parse_grid_definition(line: str, known: set[str]):
     return None
 
 
+def parse_grid_alias(line: str, known: set[str]):
+    """«<новое> значит <известное>» → (новое, известное) или None (синоним, 1:1)."""
+    toks = tokenize(line)
+    if "значит" not in toks:
+        return None
+    i = toks.index("значит")
+    left = [w for w in toks[:i] if w not in known and w not in _STOP]
+    right = [w for w in toks[i + 1:] if w in known]
+    if len(left) == 1 and len(right) == 1:
+        return left[0], right[0]
+    return None
+
+
+def definition_gaps(line: str, known: set[str]) -> list[str]:
+    """Незаземлённые слова-операции в строке-определении — открытые ВОПРОСЫ агента."""
+    toks = tokenize(line)
+    if "это" not in toks or not any(w in _SEQ for w in toks):
+        return []                                            # не похоже на определение
+    right = toks[toks.index("это") + 1:]
+    return [w for w in right if w not in known and w not in _STOP]
+
+
 class GridLexicon:
     """Словарь слово → последовательность ИМЁН примитивов (заземлено индукцией)."""
 
