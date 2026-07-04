@@ -79,6 +79,45 @@ def report(name: str, res: dict, n_tasks: int) -> None:
               + ", ".join(f"{tid} «{found[tid]}»" for tid in lost))
 
 
+def deep_stage(tasks: dict, base: dict, seed: list, splits: list, args) -> None:
+    """Глубина 3 умным поиском по НЕРЕШЁННЫМ задачам; приор — биграммы training-решений."""
+    from thinking_system.reasoning import object_param, parametric
+    from thinking_system.reasoning.deep_search import bigram_prior, guided_induce
+    from thinking_system.reasoning.grid_seed import guard
+
+    train_sols = [[s.name for s in p.steps]
+                  for p in base.get("training", base[splits[0]])["correct"].values()]
+    bigram = bigram_prior(train_sols)
+    print(f"\n── Умный поиск глубины 3 по нерешённым (бюджет {args.deep}/задачу; "
+          f"биграммы из {len(train_sols)} training-решений + эвристика цели) ──")
+    for s in splits:
+        found, correct, checked = {}, {}, 0
+        for t in tasks[s]:
+            if t.task_id in base[s]["found"]:
+                continue
+            extra = []
+            if args.parametric:
+                extra += parametric.instantiate(list(t.train))
+            if args.objects:
+                extra += object_param.instantiate() + object_param.instantiate_predicates(list(t.train))
+            prog, n = guided_induce(list(t.train), seed + [guard(p) for p in extra],
+                                    bigram, max_depth=3, budget=args.deep)
+            checked += n
+            if prog is None:
+                continue
+            found[t.task_id] = prog
+            try:
+                if all(prog(i) == o for i, o in t.test):
+                    correct[t.task_id] = prog
+            except Exception:  # noqa: BLE001
+                pass
+        report(f"{s} (+deep)", {"found": found, "correct": correct, "checked": checked},
+               len(tasks[s]))
+        total = len(base[s]["correct"]) + len(correct)
+        print(f"      итого верных на сплите с учётом глубины ≤2: {total} "
+              f"({100 * total / len(tasks[s]):.1f}%)")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--split", choices=["training", "evaluation", "both"], default="both")
@@ -91,6 +130,9 @@ def main() -> None:
                     help="+ параметрические примитивы keep/drop/paint по палитре задачи")
     ap.add_argument("--objects", action="store_true",
                     help="+ объектные переменные each[f] / pick[k]")
+    ap.add_argument("--deep", type=int, default=0, metavar="BUDGET",
+                    help="умный поиск глубины 3 по нерешённым (биграммы training-решений "
+                         "+ эвристика цели), бюджет программ на задачу")
     args = ap.parse_args()
 
     seed = guarded_grid_seed()
@@ -107,6 +149,9 @@ def main() -> None:
             for s in splits}
     for s in splits:
         report(s, base[s], len(tasks[s]))
+
+    if args.deep:
+        deep_stage(tasks, base, seed, splits, args)
 
     if args.no_grow or "training" not in base or "evaluation" not in base:
         return

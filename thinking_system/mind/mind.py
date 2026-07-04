@@ -26,14 +26,16 @@ from collections import Counter
 
 from thinking_system.mind.lexicon import GridLexicon, parse_grid_definition, parse_grid_demo
 from thinking_system.reasoning import object_param, parametric
+from thinking_system.reasoning.deep_search import bigram_prior, guided_induce
 from thinking_system.reasoning.grid_seed import guard, guarded_grid_seed
 from thinking_system.reasoning.grids import Grid, to_grid
 from thinking_system.reasoning.induction import Primitive, Program
 from thinking_system.reasoning.search_prior import best_first_induce
 from thinking_system.reasoning.templates import anti_unify, template_search
 
-# лестница размышления: (глубина, бюджет программ); дальше по лестнице = думать дольше
-LADDER = [(1, 600), (2, 16000), (3, 160000)]
+# лестница размышления: (глубина, бюджет программ); дальше по лестнице = думать дольше;
+# ступени глубины 3+ идут УМНЫМ поиском (биграммный приор из опыта + эвристика цели)
+LADDER = [(1, 600), (2, 16000), (3, 40000)]
 
 
 class Mind:
@@ -121,8 +123,12 @@ class Mind:
         weights = self._weights()
         checked_total = 0
         for depth, budget in LADDER[:effort]:
-            prog, n = best_first_induce(pairs, prims, weights,
+            if depth >= 3:               # глубоко = умно: биграммы опыта + эвристика цели
+                prog, n = guided_induce(pairs, prims, bigram_prior(list(self.solutions.values())),
                                         max_depth=depth, budget=budget)
+            else:
+                prog, n = best_first_induce(pairs, prims, weights,
+                                            max_depth=depth, budget=budget)
             checked_total += n
             if prog is not None:
                 return self._solved(task_id, prog, checked_total, {"depth": depth})

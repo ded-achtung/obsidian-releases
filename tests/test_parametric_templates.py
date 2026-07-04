@@ -196,3 +196,58 @@ def test_same_color_each_and_pick_roundtrip() -> None:
     assert len(_components(g)) == 2
     assert op.by_name("pickc[2]").fn(g) == to_grid([[0, 2, 0], [0, 2, 0], [0, 0, 0]])
     assert op.by_name("eachc[flip_v]").fn(g) == g            # столбики симметричны
+
+
+def test_bigram_prior_counts_pairs() -> None:
+    from thinking_system.reasoning.deep_search import bigram_prior, _START
+
+    b = bigram_prior([["flip_h", "flip_v", "bbox"], ["flip_h", "flip_v"]])
+    assert b[("flip_h", "flip_v")] == 2 and b[("flip_v", "bbox")] == 1
+    assert b[(_START, "flip_h")] == 2
+
+
+def test_guided_induce_finds_depth3_and_bigram_helps() -> None:
+    from thinking_system.reasoning.deep_search import bigram_prior, guided_induce
+
+    seed = full_grid_seed()
+    by = {p.name: p for p in seed}
+    want = lambda g: by["bbox"].fn(by["flip_v"].fn(by["flip_h"].fn(g)))
+    g1 = to_grid([[0, 0, 0], [3, 5, 0], [7, 0, 0]])
+    g2 = to_grid([[0, 2, 4], [0, 0, 6], [0, 0, 0]])
+    pairs = [(g1, want(g1)), (g2, want(g2))]
+
+    blind, n_blind = guided_induce(pairs, seed, None, max_depth=3, budget=30000)
+    assert blind is not None and blind(g1) == want(g1)
+    # биграммы прежних решений (flip_h→flip_v, flip_v→bbox) ведут поиск короче
+    bigr = bigram_prior([["flip_h", "flip_v", "gravity"], ["flip_v", "bbox"]])
+    guided, n_guided = guided_induce(pairs, seed, bigr, max_depth=3, budget=30000)
+    assert guided is not None and guided(g1) == want(g1)
+    assert n_guided < n_blind
+
+
+def test_guided_heuristic_prefers_target_shape() -> None:
+    from thinking_system.reasoning.deep_search import guided_induce
+
+    seed = full_grid_seed()
+    by = {p.name: p for p in seed}
+    # цель — транспонированная НЕквадратная сетка: форма цели сразу отсекает
+    # ветки, сохраняющие исходную форму, в конец очереди
+    g = to_grid([[1, 2, 3], [4, 5, 6]])
+    want = by["transpose"].fn(g)
+    prog, n = guided_induce([(g, want)], seed, None, max_depth=2, budget=5000)
+    assert prog is not None and prog(g) == want
+    assert n <= len(seed) * 3                               # нашли в первых волнах
+
+
+def test_mind_effort3_uses_guided_depth3(tmp_path: Path) -> None:
+    from thinking_system.mind import Mind
+
+    mind = Mind(str(tmp_path / "m.json"))
+    g1 = to_grid([[0, 0, 0], [3, 5, 0], [7, 0, 0]])
+    g2 = to_grid([[0, 2, 4], [0, 0, 6], [0, 0, 0]])
+    from thinking_system.reasoning.grids import flip_h, flip_v
+    from thinking_system.reasoning.perception import bounding_box
+    want = lambda g: bounding_box(flip_v(flip_h(g)))
+    res = mind.attempt("deep3", [(g1, want(g1)), (g2, want(g2))], effort=3)
+    assert res["solved"] and res["depth"] == 3
+    assert mind.program_for("deep3")(g1) == want(g1)
