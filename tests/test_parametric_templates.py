@@ -280,5 +280,38 @@ def test_expansion_composes_in_search() -> None:
     from thinking_system.reasoning.grid_seed import guard
     import pytest
     big = to_grid([[1] * 30] * 30)
+    up2 = next(p for p in seed if p.name == "upscale2")
     with pytest.raises(ValueError):
-        guard(seed[-6]).fn(ex.upscale3(big))                 # upscale2 после ×3 на 30×30
+        guard(up2).fn(ex.upscale3(big))                      # upscale2 после ×3 на 30×30
+
+
+def test_pairwise_layer_semantics() -> None:
+    from thinking_system.reasoning import pairwise as pw
+
+    # лево|разделитель|право (нечётная ширина — средний столбец отброшен)
+    g = to_grid([[1, 0, 9, 2, 2],
+                 [0, 1, 9, 0, 2]])
+    assert pw.make("and", "h").fn(g) == to_grid([[1, 0], [0, 1]])   # занято в обеих
+    assert pw.make("or", "h").fn(g) == to_grid([[1, 2], [0, 1]])    # приоритет первой
+    assert pw.make("xor", "h").fn(g) == to_grid([[0, 2], [0, 0]])   # ровно в одной
+    assert pw.make("diff", "h").fn(g) == to_grid([[0, 0], [0, 0]])  # первая минус вторая
+    v = to_grid([[5, 0], [0, 5], [5, 5]])                           # верх/низ, средний ряд прочь
+    assert pw.make("and", "v").fn(v) == to_grid([[5, 0]])
+    import pytest
+    with pytest.raises(ValueError):
+        pw.make("and", "h").fn(to_grid([[7], [7]]))                 # не из чего взять половины
+
+
+def test_pairwise_composes_with_paint_in_search() -> None:
+    from thinking_system.reasoning import pairwise as pw, parametric
+    from thinking_system.reasoning.search_prior import best_first_induce
+
+    seed = full_grid_seed()
+    xor_h = pw.make("xor", "h").fn
+    want = lambda g: parametric.make("paint", 3).fn(xor_h(g))       # мотив «совмести половины»
+    g1 = to_grid([[1, 0, 9, 2, 2], [0, 1, 9, 0, 2]])
+    g2 = to_grid([[5, 5, 9, 5, 0], [0, 0, 9, 5, 5]])
+    pairs = [(g1, want(g1)), (g2, want(g2))]
+    prims = seed + parametric.instantiate(pairs)
+    prog, _ = best_first_induce(pairs, prims, max_depth=2, budget=20000)
+    assert prog is not None and str(prog) == "xor_h ▸ paint[3]"
