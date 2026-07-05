@@ -251,3 +251,34 @@ def test_mind_effort3_uses_guided_depth3(tmp_path: Path) -> None:
     res = mind.attempt("deep3", [(g1, want(g1)), (g2, want(g2))], effort=3)
     assert res["solved"] and res["depth"] == 3
     assert mind.program_for("deep3")(g1) == want(g1)
+
+
+def test_expansion_layer_semantics() -> None:
+    from thinking_system.reasoning import expansion as ex
+
+    g = to_grid([[1, 2], [0, 3]])
+    assert ex.upscale2(g) == to_grid([[1, 1, 2, 2], [1, 1, 2, 2], [0, 0, 3, 3], [0, 0, 3, 3]])
+    assert ex.tile_h(g) == to_grid([[1, 2, 1, 2], [0, 3, 0, 3]])
+    assert ex.tile_v(g) == to_grid([[1, 2], [0, 3], [1, 2], [0, 3]])
+    assert ex.mirror_h(g) == to_grid([[1, 2, 2, 1], [0, 3, 3, 0]])
+    assert ex.mirror_v(g) == to_grid([[1, 2], [0, 3], [0, 3], [1, 2]])
+
+
+def test_expansion_composes_in_search() -> None:
+    from thinking_system.reasoning import expansion as ex
+    from thinking_system.reasoning.perception import bounding_box
+    from thinking_system.reasoning.search_prior import best_first_induce
+
+    seed = full_grid_seed()
+    # «обрежь до занятого и увеличь ×2» — мотив масштабирующих задач ARC
+    want = lambda g: ex.upscale2(bounding_box(g))
+    g1 = to_grid([[0, 0, 0], [0, 5, 1], [0, 0, 0]])
+    g2 = to_grid([[7, 0], [0, 0]])
+    prog, _ = best_first_induce([(g1, want(g1)), (g2, want(g2))], seed, max_depth=2, budget=4000)
+    assert prog is not None and str(prog) == "bbox ▸ upscale2"
+    # взрывной рост в глубокой композиции отсекается guard-ом, а не виснет
+    from thinking_system.reasoning.grid_seed import guard
+    import pytest
+    big = to_grid([[1] * 30] * 30)
+    with pytest.raises(ValueError):
+        guard(seed[-6]).fn(ex.upscale3(big))                 # upscale2 после ×3 на 30×30

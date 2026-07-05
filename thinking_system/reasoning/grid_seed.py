@@ -5,7 +5,8 @@
   • grid_primitives        — геометрия (симметрии + перекраска);
   • perception_primitives  — гравитация, связные объекты, счёт, заливка;
   • structural_primitives  — симметрия-достройка, фрактал, контур, агрегации;
-  • object_primitives      — гравитация по сторонам, симметрия под заслонкой, рамка.
+  • object_primitives      — гравитация по сторонам, симметрия под заслонкой, рамка;
+  • expansion_primitives   — закономерная смена размера (масштаб, тайлинг, зеркала).
 
 `full_grid_seed()` собирает их вместе — это вход для library_learning, которая
 сама абстрагирует частые КОМБИНАЦИИ (например «bbox ▸ fractal», встреченную на
@@ -14,6 +15,7 @@
 
 from __future__ import annotations
 
+from thinking_system.reasoning.expansion import expansion_primitives
 from thinking_system.reasoning.grids import grid_primitives
 from thinking_system.reasoning.induction import Primitive
 from thinking_system.reasoning.perception import perception_primitives
@@ -24,7 +26,8 @@ from thinking_system.reasoning.objects import object_primitives
 def full_grid_seed() -> list:
     """Все слои перцептивных примитивов над сетками в одном наборе."""
     return (grid_primitives() + perception_primitives()
-            + structural_primitives() + object_primitives())
+            + structural_primitives() + object_primitives()
+            + expansion_primitives())
 
 
 def guard(p: Primitive, *, max_cells: int = 10_000) -> Primitive:
