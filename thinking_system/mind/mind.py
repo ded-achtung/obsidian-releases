@@ -104,17 +104,20 @@ class Mind:
         собираемые из известного (с учётом слов, которые станут известны из
         показов этого же текста и цепочек определений внутри него).
         """
+        from thinking_system.language.morphology import stem
+
         demos, others = self._scan(text)
-        new_words = [w for w in demos if w not in self.lexicon.words]
-        known = set(self.lexicon.words) | set(demos)
+        new_words = [w for w in demos if self.lexicon.resolve(w) is None]
+        known = self.lexicon.known_stems() | {stem(w) for w in demos}
+        from thinking_system.mind.lexicon import stems_match  # noqa: PLC0415
         groundable: list[str] = []
         changed = True
         while changed:                                       # определения могут опираться друг на друга
             changed = False
             for line in others:
                 parsed = parse_grid_definition(line, known) or parse_grid_alias(line, known)
-                if parsed and parsed[0] not in known:
-                    known.add(parsed[0])
+                if parsed and not any(stems_match(stem(parsed[0]), k) for k in known):
+                    known.add(stem(parsed[0]))
                     groundable.append(parsed[0])
                     changed = True
         gaps = sorted({w for line in others for w in definition_gaps(line, known)})
@@ -123,6 +126,8 @@ class Mind:
 
     def read(self, text: str) -> dict:
         """Учебник: показы заземляют слова индукцией, определения/синонимы растят язык."""
+        from thinking_system.language.morphology import stem
+
         demos, others = self._scan(text)
         learned = [w for w, ex in demos.items() if self.lexicon.learn(w, ex)]
         defined: list[str] = []
@@ -130,9 +135,9 @@ class Mind:
         while changed:                                       # цепочки определений внутри текста
             changed = False
             for line in others:
-                known = set(self.lexicon.words)
+                known = self.lexicon.known_stems()
                 parsed = parse_grid_definition(line, known)
-                if parsed and parsed[0] not in known and self.lexicon.define(*parsed):
+                if parsed and self.lexicon.define(*parsed):
                     defined.append(parsed[0])
                     self._add_abstraction(self.lexicon.words[parsed[0]])
                     changed = True
@@ -141,14 +146,18 @@ class Mind:
                 if alias and self.lexicon.define(alias[0], [alias[1]]):
                     defined.append(alias[0])
                     changed = True
-        known = set(self.lexicon.words)
+        from thinking_system.mind.lexicon import known_has
+
+        known = self.lexicon.known_stems()
         gaps = {w for line in others for w in definition_gaps(line, known)}
-        self.questions = sorted((set(self.questions) | gaps) - known)  # выученное — не вопрос
+        open_qs = {q for q in set(self.questions) | gaps
+                   if not known_has(q, known)}               # выученное — не вопрос
+        self.questions = sorted(open_qs)
         self.texts_read.append(text[:60])
         if defined or learned:
             self._dirty_since_retry = True
         return {"выучено_слов": learned, "определено": defined,
-                "вопросы": sorted(gaps - known)}
+                "вопросы": sorted(g for g in gaps if not known_has(g, known))}
 
     def study_library(self, library: dict[str, str]) -> list[dict]:
         """ЛЮБОПЫТСТВО над библиотекой: читать в порядке эпистемической ценности.
@@ -264,7 +273,11 @@ class Mind:
             state = json.load(f)
         for seq in state["abstractions"]:
             self._add_abstraction(seq)
+        from thinking_system.language.morphology import stem
+
         self.lexicon.words.update(state["lexicon"])
+        for w in state["lexicon"]:                           # восстановить индекс основ
+            self.lexicon._stems[stem(w)] = w
         self.solutions.update(state["solutions"])
         self.unsolved.update(state["unsolved"])
         self.questions = state.get("questions", [])

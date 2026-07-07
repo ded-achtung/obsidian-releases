@@ -34,9 +34,14 @@ def test_extract_and_parse_demo() -> None:
 
 
 def test_parse_definition_needs_known_words() -> None:
-    known = {"отражение", "переворот"}
+    from thinking_system.language.morphology import stem
+
+    known = {stem("отражение"), stem("переворот")}           # парсер сравнивает по основам
     assert parse_grid_definition("поворот это сначала отражение потом переворот", known) \
         == ("поворот", ["отражение", "переворот"])
+    # падежные формы известных слов тоже узнаются (частично открытый словарь)
+    assert parse_grid_definition("поворот это сначала отражения потом переворота", known) \
+        == ("поворот", ["отражения", "переворота"])
     assert parse_grid_definition("поворот это сначала тайна потом переворот", known) is None
 
 
@@ -150,3 +155,38 @@ def test_study_library_orders_by_curiosity_and_skips(tmp_path: Path) -> None:
     assert mind2.questions == ["обращение"]
     mind2.read("обращение [[1, 2]] → [[2, 1]]\nобращение [[3], [4]] → [[3], [4]]")
     assert mind2.questions == []                             # вопрос закрыт показом
+
+
+def test_open_vocab_forms_and_prose(tmp_path: Path) -> None:
+    from thinking_system.reasoning.grids import flip_v, flip_h
+
+    mind = Mind(str(tmp_path / "m.json"))
+    # показ ВНУТРИ прозы, без стрелки: две сетки в строке = вход → выход
+    res = mind.read("Например отражение превращает [[1, 2], [3, 4]] в [[2, 1], [4, 3]] всегда")
+    assert res["выучено_слов"] == ["отражение"]
+    assert mind.lexicon.program("отражениями") is not None   # форма слова узнаётся по основе
+    # определение падежными формами поверх выученных слов
+    mind.read("переворот [[1, 2], [3, 4]] → [[3, 4], [1, 2]]\nпереворот [[7], [8]] → [[8], [7]]")
+    res = mind.read("разворот это сначала отражения потом переворота")
+    assert res["определено"] == ["разворот"]
+    g = to_grid([[1, 2, 0], [0, 3, 4]])
+    assert mind.lexicon.program("разворотом")(g) == flip_v(flip_h(g))
+
+
+def test_guided_smoothing_bounds_adversarial_prior() -> None:
+    import math
+
+    from thinking_system.reasoning.deep_search import make_step_cost
+
+    seed = full_grid_seed()
+    # враждебный приор: миллионные счётчики на ВСЕХ прочих переходах
+    bad = {("^", p.name): 1_000_000 for p in seed if p.name != "flip_h"}
+    cost0 = make_step_cost(bad, seed, smooth=0.0)
+    cost3 = make_step_cost(bad, seed, smooth=0.3)
+    # без сглаживания стоимость непопулярного шага растёт со счётчиками без предела
+    assert cost0("^", "flip_h") > 15                         # ≈ log(5e6·|P|)
+    # со сглаживанием — ограничена −log(smooth/V), какие бы счётчики ни накопились
+    bound = -math.log(0.3 / len(seed))
+    assert cost3("^", "flip_h") <= bound + 1e-9 < 6
+    # и порядок предпочтений приора сохраняется (сглаживание ≠ стирание опыта)
+    assert cost3("^", "gravity") < cost3("^", "flip_h")
