@@ -21,7 +21,9 @@ def test_palette_and_instantiate_from_task_data() -> None:
     pairs = [(G, parametric.make("keep", 3).fn(G))]
     assert parametric.task_palette(pairs) == [2, 3]
     names = {p.name for p in parametric.instantiate(pairs)}
-    assert names == {"keep[2]", "keep[3]", "drop[2]", "drop[3]", "paint[2]", "paint[3]"}
+    enumerated = {"keep[2]", "keep[3]", "drop[2]", "drop[3]", "paint[2]", "paint[3]"}
+    computed = {f"{fam}[{w}]" for fam in ("keep", "drop", "paint") for w in ("top", "rare")}
+    assert names == enumerated | computed                    # палитра + вычисляемые
 
 
 def test_by_name_roundtrip_and_reject() -> None:
@@ -315,3 +317,32 @@ def test_pairwise_composes_with_paint_in_search() -> None:
     prims = seed + parametric.instantiate(pairs)
     prog, _ = best_first_induce(pairs, prims, max_depth=2, budget=20000)
     assert prog is not None and str(prog) == "xor_h ▸ paint[3]"
+
+
+def test_computed_arguments_semantics_and_ties() -> None:
+    from thinking_system.reasoning import parametric as p
+
+    g = to_grid([[3, 3, 7], [0, 3, 7]])                      # 3×3, 7×2
+    assert p.by_name("paint[top]").fn(g) == to_grid([[3, 3, 3], [0, 3, 3]])
+    assert p.by_name("drop[rare]").fn(g) == to_grid([[3, 3, 0], [0, 3, 0]])
+    tie = to_grid([[5, 2], [2, 5]])                          # ничья 2×2 — меньший цвет
+    assert p.by_name("keep[top]").fn(tie) == to_grid([[0, 2], [2, 0]])
+    import pytest
+    with pytest.raises(ValueError):
+        p.by_name("paint[top]").fn(to_grid([[0, 0]]))        # пустая сетка — честный отказ
+
+
+def test_computed_argument_generalizes_across_palettes() -> None:
+    from thinking_system.mind import Mind
+
+    # роль «шум = самый редкий цвет» играет РАЗНЫЙ цвет в разных парах:
+    # перечисляемый drop[c] не согласуется с обеими, вычисляемый drop[rare] — да
+    g1 = to_grid([[3, 3, 3], [3, 7, 3]])                     # редкий 7
+    g2 = to_grid([[5, 5, 1], [5, 5, 5]])                     # редкий 1
+    want1 = to_grid([[3, 3, 3], [3, 0, 3]])
+    want2 = to_grid([[5, 5, 0], [5, 5, 5]])
+    mind = Mind()
+    res = mind.attempt("denoise_rare", [(g1, want1), (g2, want2)], effort=1)
+    # на двух цветах keep[top] ≡ drop[rare] — принимаем любой ВЫЧИСЛЯЕМЫЙ вариант
+    assert res["solved"] and mind.solutions["denoise_rare"] in (["drop[rare]"], ["keep[top]"])
+    assert mind.program_for("denoise_rare")(g1) == want1     # восстановление из имени
