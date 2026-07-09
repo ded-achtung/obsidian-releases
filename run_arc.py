@@ -79,49 +79,75 @@ def report(name: str, res: dict, n_tasks: int) -> None:
               + ", ".join(f"{tid} «{found[tid]}»" for tid in lost))
 
 
-def deep_stage(tasks: dict, base: dict, seed: list, lib: list, splits: list, args) -> None:
-    """Глубина 3 умным поиском по НЕРЕШЁННЫМ задачам; приор — биграммы training-решений.
+def deep_stage(tasks: dict, base: dict, seed: list, lib: list, splits: list, args,
+               learner=None) -> None:
+    """Глубина 3 умным поиском по НЕРЕШЁННЫМ задачам — итеративный wake/sleep.
 
-    В язык поиска входят и АБСТРАКЦИИ, выросшие из training-решений (lib):
-    язык среднего уровня делает структуры глубины до 6 в базовых именах
-    достижимыми на глубине 3. У новых имён нет биграммных счётчиков — они
-    достижимы благодаря сглаживанию приора (AUDIT, дополнение 12)."""
+    Раунд 1: приор — биграммы training-решений, язык — seed + абстракции из
+    training-решений (lib); структуры глубины до 6 в базовых именах достижимы
+    на глубине 3, новые имена без счётчиков достижимы благодаря сглаживанию
+    (AUDIT, дополнение 12). Со 2-го раунда опыт = ВСЕ решения, прошедшие
+    скрытые тесты (training + evaluation + deep-находки): из пула растут новые
+    абстракции, приор пересчитывается — найденное в одном раунде становится
+    языком следующего. Скрытый тест текущей задачи в её поиске не участвует
+    никогда. Итерация честно останавливается, когда раунд не даёт новых
+    верных решений."""
     from thinking_system.reasoning import object_param, parametric
     from thinking_system.reasoning.deep_search import bigram_prior, guided_induce
     from thinking_system.reasoning.grid_seed import guard
 
-    train_sols = [[s.name for s in p.steps]
-                  for p in base.get("training", base[splits[0]])["correct"].values()]
-    bigram = bigram_prior(train_sols)
-    print(f"\n── Умный поиск глубины 3 по нерешённым (бюджет {args.deep}/задачу; "
-          f"биграммы из {len(train_sols)} training-решений + эвристика цели"
-          + (f"; язык + {len(lib)} абстракций из training-решений" if lib else "") + ") ──")
-    for s in splits:
-        found, correct, checked = {}, {}, 0
-        for t in tasks[s]:
-            if t.task_id in base[s]["found"]:
-                continue
-            extra = []
-            if args.parametric:
-                extra += parametric.instantiate(list(t.train))
-            if args.objects:
-                extra += object_param.instantiate() + object_param.instantiate_predicates(list(t.train))
-            prog, n = guided_induce(list(t.train), seed + lib + [guard(p) for p in extra],
-                                    bigram, max_depth=3, budget=args.deep)
-            checked += n
-            if prog is None:
-                continue
-            found[t.task_id] = prog
-            try:
-                if all(prog(i) == o for i, o in t.test):
-                    correct[t.task_id] = prog
-            except Exception:  # noqa: BLE001
-                pass
-        report(f"{s} (+deep)", {"found": found, "correct": correct, "checked": checked},
-               len(tasks[s]))
-        total = len(base[s]["correct"]) + len(correct)
-        print(f"      итого верных на сплите с учётом глубины ≤2: {total} "
-              f"({100 * total / len(tasks[s]):.1f}%)")
+    pool = list(base.get("training", base[splits[0]])["correct"].values())
+    taken = {s: set(base[s]["found"]) for s in splits}       # взятые поиском (включая переобучившиеся)
+    n_correct = {s: len(base[s]["correct"]) for s in splits}
+    for r in range(1, args.deep_rounds + 1):
+        bigram = bigram_prior([[st.name for st in p.steps] for p in pool])
+        rnd = f", раунд {r}/{args.deep_rounds}" if args.deep_rounds > 1 else ""
+        print(f"\n── Умный поиск глубины 3 по нерешённым (бюджет {args.deep}/задачу; "
+              f"биграммы из {len(pool)} проверенных решений + эвристика цели"
+              + (f"; язык + {len(lib)} абстракций" if lib else "") + rnd + ") ──")
+        round_correct: list = []
+        for s in splits:
+            found, correct, checked = {}, {}, 0
+            for t in tasks[s]:
+                if t.task_id in taken[s]:
+                    continue
+                extra = []
+                if args.parametric:
+                    extra += parametric.instantiate(list(t.train))
+                if args.objects:
+                    extra += object_param.instantiate() + object_param.instantiate_predicates(list(t.train))
+                prog, n = guided_induce(list(t.train), seed + lib + [guard(p) for p in extra],
+                                        bigram, max_depth=3, budget=args.deep)
+                checked += n
+                if prog is None:
+                    continue
+                found[t.task_id] = prog
+                try:
+                    if all(prog(i) == o for i, o in t.test):
+                        correct[t.task_id] = prog
+                except Exception:  # noqa: BLE001
+                    pass
+            report(f"{s} (+deep{rnd})", {"found": found, "correct": correct, "checked": checked},
+                   len(tasks[s]))
+            taken[s] |= set(found)
+            n_correct[s] += len(correct)
+            round_correct += list(correct.values())
+            print(f"      итого верных на сплите с учётом глубины ≤2: {n_correct[s]} "
+                  f"({100 * n_correct[s] / len(tasks[s]):.1f}%)")
+        if r == args.deep_rounds:
+            break
+        if not round_correct:
+            print("   раунд не дал новых верных решений — итерация честно остановлена")
+            break
+        # sleep: опыт пополняется ВСЕМИ проверенными решениями, язык растёт из пула
+        if r == 1 and "evaluation" in base:
+            pool += list(base["evaluation"]["correct"].values())
+        pool += round_correct
+        if learner is not None:
+            new_abs = learner.grow_from_solutions(pool, top=5, min_count=2)
+            lib = [p for p in learner.lib.prims if p.name in set(learner.lib.abstractions)]
+            print(f"   sleep: пул опыта {len(pool)} решений; новые абстракции: "
+                  f"{new_abs if new_abs else 'нет'}")
 
 
 def main() -> None:
@@ -139,6 +165,10 @@ def main() -> None:
     ap.add_argument("--deep", type=int, default=0, metavar="BUDGET",
                     help="умный поиск глубины 3 по нерешённым (биграммы training-решений "
                          "+ эвристика цели), бюджет программ на задачу")
+    ap.add_argument("--deep-rounds", type=int, default=1, metavar="N",
+                    help="итеративный wake/sleep: раунды deep-поиска, между ними пул "
+                         "проверенных решений пополняется и язык растёт (стоп, если "
+                         "раунд не дал новых верных решений)")
     args = ap.parse_args()
 
     seed = guarded_grid_seed()
@@ -169,7 +199,7 @@ def main() -> None:
         print(f"   абстрагированы повторяющиеся комбо: {added if added else 'нет повторов'}")
 
     if args.deep:
-        deep_stage(tasks, base, seed, lib, splits, args)
+        deep_stage(tasks, base, seed, lib, splits, args, learner)
 
     if not added or "evaluation" not in base:
         return
