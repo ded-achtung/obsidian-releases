@@ -79,8 +79,13 @@ def report(name: str, res: dict, n_tasks: int) -> None:
               + ", ".join(f"{tid} «{found[tid]}»" for tid in lost))
 
 
-def deep_stage(tasks: dict, base: dict, seed: list, splits: list, args) -> None:
-    """Глубина 3 умным поиском по НЕРЕШЁННЫМ задачам; приор — биграммы training-решений."""
+def deep_stage(tasks: dict, base: dict, seed: list, lib: list, splits: list, args) -> None:
+    """Глубина 3 умным поиском по НЕРЕШЁННЫМ задачам; приор — биграммы training-решений.
+
+    В язык поиска входят и АБСТРАКЦИИ, выросшие из training-решений (lib):
+    язык среднего уровня делает структуры глубины до 6 в базовых именах
+    достижимыми на глубине 3. У новых имён нет биграммных счётчиков — они
+    достижимы благодаря сглаживанию приора (AUDIT, дополнение 12)."""
     from thinking_system.reasoning import object_param, parametric
     from thinking_system.reasoning.deep_search import bigram_prior, guided_induce
     from thinking_system.reasoning.grid_seed import guard
@@ -89,7 +94,8 @@ def deep_stage(tasks: dict, base: dict, seed: list, splits: list, args) -> None:
                   for p in base.get("training", base[splits[0]])["correct"].values()]
     bigram = bigram_prior(train_sols)
     print(f"\n── Умный поиск глубины 3 по нерешённым (бюджет {args.deep}/задачу; "
-          f"биграммы из {len(train_sols)} training-решений + эвристика цели) ──")
+          f"биграммы из {len(train_sols)} training-решений + эвристика цели"
+          + (f"; язык + {len(lib)} абстракций из training-решений" if lib else "") + ") ──")
     for s in splits:
         found, correct, checked = {}, {}, 0
         for t in tasks[s]:
@@ -100,7 +106,7 @@ def deep_stage(tasks: dict, base: dict, seed: list, splits: list, args) -> None:
                 extra += parametric.instantiate(list(t.train))
             if args.objects:
                 extra += object_param.instantiate() + object_param.instantiate_predicates(list(t.train))
-            prog, n = guided_induce(list(t.train), seed + [guard(p) for p in extra],
+            prog, n = guided_induce(list(t.train), seed + lib + [guard(p) for p in extra],
                                     bigram, max_depth=3, budget=args.deep)
             checked += n
             if prog is None:
@@ -150,20 +156,22 @@ def main() -> None:
     for s in splits:
         report(s, base[s], len(tasks[s]))
 
-    if args.deep:
-        deep_stage(tasks, base, seed, splits, args)
-
-    if args.no_grow or "training" not in base or "evaluation" not in base:
-        return
-
     # рост: абстракции ТОЛЬКО из решений training-сплита (верных на скрытых test);
-    # замер выигрыша — на непересекающемся сплите evaluation
-    learner = LibraryLearner(seed)
-    added = learner.grow_from_solutions(list(base["training"]["correct"].values()),
-                                        top=5, min_count=2)
-    print(f"\n── Рост библиотеки из решений training ({len(base['training']['correct'])} программ) ──")
-    print(f"   абстрагированы повторяющиеся комбо: {added if added else 'нет повторов'}")
-    if not added:
+    # замер выигрыша — на непересекающемся сплите evaluation. Рост идёт ДО deep,
+    # чтобы язык среднего уровня участвовал в глубоком поиске.
+    learner, added, lib = None, [], []
+    if not args.no_grow and "training" in base:
+        learner = LibraryLearner(seed)
+        added = learner.grow_from_solutions(list(base["training"]["correct"].values()),
+                                            top=5, min_count=2)
+        lib = [p for p in learner.lib.prims if p.name in set(learner.lib.abstractions)]
+        print(f"\n── Рост библиотеки из решений training ({len(base['training']['correct'])} программ) ──")
+        print(f"   абстрагированы повторяющиеся комбо: {added if added else 'нет повторов'}")
+
+    if args.deep:
+        deep_stage(tasks, base, seed, lib, splits, args)
+
+    if not added or "evaluation" not in base:
         return
 
     grown = evaluate(tasks["evaluation"], learner.lib.prims,
