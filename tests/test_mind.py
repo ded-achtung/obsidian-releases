@@ -228,3 +228,15 @@ def test_world_map_survives_process(tmp_path: Path) -> None:
     mind2 = Mind(str(tmp_path / "m.json"))                   # новый процесс, та же память
     res = mind2.explore("m301", spec, effort=2)
     assert res["solved"] and res["explored"] == 0            # решил сразу по карте из памяти
+
+
+def test_world_skill_transfers_to_fresh_worlds() -> None:
+    mind = Mind()
+    for sd in (200, 201, 202):                               # жизнь: решает и практикует навык
+        assert mind.explore(f"w{sd}", _maze_item(sd)["world"], effort=2)["solved"]
+    assert mind.worlds_practiced == 3
+    assert mind.world_skill_sub == [6, 6]                    # подцель навыка выучена из жизни
+    fresh = _maze_item(215)["world"]                         # свежий мир того же распределения
+    with_skill = mind.explore("t215", fresh, effort=1)
+    scratch = Mind().explore("t215", fresh, effort=1)
+    assert with_skill["solved"] and not scratch["solved"]    # беглого взгляда хватает ТОЛЬКО с навыком

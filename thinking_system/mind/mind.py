@@ -44,6 +44,13 @@ LADDER = [(1, 600), (2, 20000), (3, 40000)]
 # исследование (конфигурация верхней ступени — как в run_world, 10/10 на свежих)
 WORLD_LADDER = [(3, 60), (40, 1500)]
 
+# кросс-мировой НАВЫК (механизм run_transfer): линейная Q над RBF-тайлами;
+# подцель навыка АГЕНТ ВЫУЧИВАЕТ из жизни — это цель его прежних миров
+# (первая практика фиксирует её); решённый мир становится тренажёром,
+# новый мир С ТОЙ ЖЕ целью исследуется с тёплым стартом от навыка
+WORLD_SKILL_PRACTICE = 400                                   # эпизодов практики на решённый мир
+WORLD_SKILL_MIX = 0.5                                        # доля шагов исследования по навыку
+
 
 class Mind:
     """Постоянный агент над сетками и текстом с растущей библиотекой и словарём."""
@@ -57,6 +64,10 @@ class Mind:
         self.unsolved: dict[str, list] = {}                  # задача → train-пары (для повестки)
         self.world_maps: dict[str, list] = {}                # мир → выученные переходы [s,a,s']
         self.unsolved_worlds: dict[str, dict] = {}           # мир → спецификация (для повестки)
+        self.world_skill: list | None = None                 # веса кросс-мирового навыка (4×dim)
+        self.world_skill_sub: list | None = None             # подцель навыка [r, c] (из жизни)
+        self.world_skill_size: int | None = None             # размер миров навыка
+        self.worlds_practiced: int = 0                       # на скольких мирах навык тренирован
         self.questions: list[str] = []                       # слова, которые встретил, но не заземлил
         self.texts_read: list[str] = []
         self._dirty_since_retry = False
@@ -257,21 +268,66 @@ class Mind:
                 return t
         return None
 
+    def _skill_encoder(self):
+        from thinking_system.agent.latent_qoption import TileEncoder
+
+        return TileEncoder(self.world_skill_size, n_tiles=4, seed=0)
+
+    def _skill_action(self, W, enc, s: int) -> int:
+        import numpy as np
+
+        return int(np.argmax(W @ enc(s)))
+
+    def _skill_fits(self, env) -> bool:
+        """Навык применим: тот же размер мира и та же цель, что в прежней жизни."""
+        return (self.world_skill is not None and env.size == self.world_skill_size
+                and list(env.goal) == list(self.world_skill_sub))
+
+    def _practice_skill(self, env) -> None:
+        """Решённый мир — тренажёр: навык доучивается на нём (домен-рандомизация
+        по жизни, как train_across_worlds, но миры приходят потоком опыта).
+        Подцель навыка агент выучивает из жизни: это цель его прежних миров —
+        первая практика фиксирует её; миры с другой целью навык не тренируют."""
+        import numpy as np
+
+        from thinking_system.agent.transfer import transfer_option
+
+        if self.world_skill_sub is None:
+            self.world_skill_sub, self.world_skill_size = list(env.goal), env.size
+        if env.size != self.world_skill_size or list(env.goal) != list(self.world_skill_sub):
+            return                                           # чужая цель/размер — не тренажёр
+        enc = self._skill_encoder()
+        opt = transfer_option(env, tuple(self.world_skill_sub), enc, enc.dim,
+                              np.array(self.world_skill) if self.world_skill is not None
+                              else np.zeros((4, enc.dim)))
+        opt.train(WORLD_SKILL_PRACTICE, max_steps=60)
+        self.world_skill = [list(map(float, row)) for row in opt.W]
+        self.worlds_practiced += 1
+
     def explore(self, world_id: str, spec: dict, *, effort: int = 2) -> dict:
         """Мир: исследовать по лестнице, выучить карту, дойти до цели.
 
         Способность — существующий ActingAgent (активный вывод: прагматика/
         эпистемика); модель мира — таблица переходов (s,a)→s'. Карта живёт в
         памяти агента и переживает запуск (известный мир решается сразу, без
-        исследования). Честные границы: карта ПРО-лабиринтная, переноса между
-        мирами нет (это предмет run_transfer); мера здесь — маршрутизация
-        третьего типа опыта, эскалация исследования и память."""
+        исследования); исследование останавливается, как только карта связала
+        цель. ПЕРЕНОС МЕЖДУ МИРАМИ: часть шагов исследования идёт по
+        кросс-мировому навыку (веса Q над RBF-тайлами, натренированные
+        практикой в РЕШЁННЫХ мирах, — механизм run_transfer), решённый мир
+        доучивает навык. Честные границы: подцель навыка — цель прежних миров
+        жизни (выучена из опыта, но одна); в мирах с другой целью или
+        размером навык честно не применяется."""
+        import numpy as np
+
         from thinking_system.agent.acting import ActingAgent
 
         env = self._make_world(spec)
         agent = ActingAgent(env.n_actions, env.goal_state, seed=0)
         for s, a, sp in self.world_maps.get(world_id, []):   # карта прежних сессий
             agent.model[(s, a)] = sp
+        W = np.array(self.world_skill) if self._skill_fits(env) else None
+        enc = self._skill_encoder() if W is not None else None
+        mix_rng = np.random.default_rng(0)
         explored = 0
         for episodes, max_steps in WORLD_LADDER[:max(effort, 1)]:
             if self._walk(env, agent) is not None:
@@ -280,17 +336,24 @@ class Mind:
                 eps = max(0.05, 0.5 * (0.88 ** ep))          # любопытство угасает
                 s = env.reset()
                 for _ in range(max_steps):
-                    a = agent.act(s, epsilon=eps)
+                    if W is not None and mix_rng.random() < WORLD_SKILL_MIX:
+                        a = self._skill_action(W, enc, s)    # тёплый старт: шаг по навыку
+                    else:
+                        a = agent.act(s, epsilon=eps)
                     sp, done = env.step(a)
                     agent.learn(s, a, sp)
                     explored += 1
                     s = sp
                     if done:
                         break
+                if self._walk(env, agent) is not None:
+                    break                                    # связал цель — хватит исследовать
         steps = self._walk(env, agent)
         if steps is not None:
             self.world_maps[world_id] = [[s, a, sp] for (s, a), sp in sorted(agent.model.items())]
             self.unsolved_worlds.pop(world_id, None)
+            if explored:                                     # решён исследованием (не из памяти)
+                self._practice_skill(env)                    # — новый мир становится тренажёром
             return {"solved": True, "steps": steps, "optimal": env.optimal_steps(),
                     "explored": explored}
         self.unsolved_worlds[world_id] = spec
@@ -355,6 +418,10 @@ class Mind:
                  "unsolved": self.unsolved,
                  "world_maps": self.world_maps,
                  "unsolved_worlds": self.unsolved_worlds,
+                 "world_skill": self.world_skill,
+                 "world_skill_sub": self.world_skill_sub,
+                 "world_skill_size": self.world_skill_size,
+                 "worlds_practiced": self.worlds_practiced,
                  "questions": self.questions,
                  "texts_read": self.texts_read}
         with open(path, "w", encoding="utf-8") as f:
@@ -375,6 +442,10 @@ class Mind:
         self.unsolved.update(state["unsolved"])
         self.world_maps.update(state.get("world_maps", {}))
         self.unsolved_worlds.update(state.get("unsolved_worlds", {}))
+        self.world_skill = state.get("world_skill")
+        self.world_skill_sub = state.get("world_skill_sub")
+        self.world_skill_size = state.get("world_skill_size")
+        self.worlds_practiced = state.get("worlds_practiced", 0)
         self.questions = state.get("questions", [])
         self.texts_read = state.get("texts_read", [])
 
