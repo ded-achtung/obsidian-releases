@@ -40,3 +40,4 @@ jobs:
           python run_causal.py
           python run_language.py
           python run_world.py
+          python run_mind_worlds.py

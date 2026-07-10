@@ -2,8 +2,8 @@
 
 Закрывает главный разрыв прототипа «думают компоненты — не думает система»:
 
-  • ОДИН субъект: перцепция типа опыта (текст / грид-задача) и выбор способности —
-    внутри агента, а не в скрипте-оркестраторе;
+  • ОДИН субъект: перцепция типа опыта (текст / грид-задача / мир-лабиринт) и выбор
+    способности — внутри агента, а не в скрипте-оркестраторе;
   • перенос ЧЕРЕЗ ГРАНИЦУ ДОМЕНОВ: слова учебника заземляются в грид-примитивы
     индукцией из показов, определения растят библиотеку — выигрыш меряется на
     скрытых test-входах реального ARC;
@@ -40,6 +40,10 @@ from thinking_system.reasoning.templates import anti_unify, template_search
 # ступени глубины 3+ идут УМНЫМ поиском (биграммный приор из опыта + эвристика цели)
 LADDER = [(1, 600), (2, 20000), (3, 40000)]
 
+# лестница ИССЛЕДОВАНИЯ мира: (эпизодов, шагов/эпизод); беглый взгляд → долгое
+# исследование (конфигурация верхней ступени — как в run_world, 10/10 на свежих)
+WORLD_LADDER = [(3, 60), (40, 1500)]
+
 
 class Mind:
     """Постоянный агент над сетками и текстом с растущей библиотекой и словарём."""
@@ -51,6 +55,8 @@ class Mind:
         self.lexicon = GridLexicon(self.prims)
         self.solutions: dict[str, list[str]] = {}            # задача → имена шагов решения
         self.unsolved: dict[str, list] = {}                  # задача → train-пары (для повестки)
+        self.world_maps: dict[str, list] = {}                # мир → выученные переходы [s,a,s']
+        self.unsolved_worlds: dict[str, dict] = {}           # мир → спецификация (для повестки)
         self.questions: list[str] = []                       # слова, которые встретил, но не заземлил
         self.texts_read: list[str] = []
         self._dirty_since_retry = False
@@ -62,9 +68,11 @@ class Mind:
 
     @staticmethod
     def perceive(item) -> str:
-        """Тип опыта по самому опыту: текст / грид-задача / неизвестное."""
+        """Тип опыта по самому опыту: текст / грид-задача / мир / неизвестное."""
         if isinstance(item, str):
             return "text"
+        if isinstance(item, dict) and "world" in item:
+            return "world"
         if isinstance(item, dict) and "train" in item:
             pairs = item["train"]
             if pairs and all(len(p) == 2 for p in pairs):
@@ -78,6 +86,8 @@ class Mind:
             return {"routed": "text", **self.read(item)}
         if kind == "grid_task":
             return {"routed": "grid_task", **self.attempt(item["id"], item["train"], effort=effort)}
+        if kind == "world":
+            return {"routed": "world", **self.explore(item["id"], item["world"], effort=effort)}
         return {"routed": "unknown"}
 
     # ── способность: чтение (текст → словарь → библиотека) ─────────────────────────
@@ -216,6 +226,76 @@ class Mind:
         self.unsolved[task_id] = [[list(map(list, i)), list(map(list, o))] for i, o in pairs]
         return {"solved": False, "checked": checked_total}
 
+    # ── способность: мир-лабиринт (активный вывод с лестницей исследования) ────────
+
+    @staticmethod
+    def _make_world(spec: dict):
+        from thinking_system.world.gridworld import GridWorld
+
+        return GridWorld(int(spec["size"]), {tuple(w) for w in spec["walls"]},
+                         start=tuple(spec["start"]), goal=tuple(spec["goal"]))
+
+    @staticmethod
+    def _walk(env, agent, *, max_len: int = 200) -> int | None:
+        """Пройти к цели РЕАЛЬНО в среде по выученной карте; шагов или None.
+
+        Решённость мира проверяется исполнением, а не самоотчётом модели:
+        на каждом шаге берётся действие, сокращающее выученное расстояние
+        до цели, и исполняется в среде."""
+        s = env.reset()
+        for t in range(1, max_len + 1):
+            dist = agent.dist_to_goal()
+            best_a, best_d = None, float("inf")
+            for a in range(env.n_actions):
+                sp = agent.model.get((s, a))
+                if sp is not None and sp in dist and dist[sp] < best_d:
+                    best_d, best_a = dist[sp], a
+            if best_a is None:
+                return None                                  # карта не ведёт к цели
+            s, done = env.step(best_a)
+            if done:
+                return t
+        return None
+
+    def explore(self, world_id: str, spec: dict, *, effort: int = 2) -> dict:
+        """Мир: исследовать по лестнице, выучить карту, дойти до цели.
+
+        Способность — существующий ActingAgent (активный вывод: прагматика/
+        эпистемика); модель мира — таблица переходов (s,a)→s'. Карта живёт в
+        памяти агента и переживает запуск (известный мир решается сразу, без
+        исследования). Честные границы: карта ПРО-лабиринтная, переноса между
+        мирами нет (это предмет run_transfer); мера здесь — маршрутизация
+        третьего типа опыта, эскалация исследования и память."""
+        from thinking_system.agent.acting import ActingAgent
+
+        env = self._make_world(spec)
+        agent = ActingAgent(env.n_actions, env.goal_state, seed=0)
+        for s, a, sp in self.world_maps.get(world_id, []):   # карта прежних сессий
+            agent.model[(s, a)] = sp
+        explored = 0
+        for episodes, max_steps in WORLD_LADDER[:max(effort, 1)]:
+            if self._walk(env, agent) is not None:
+                break                                        # карта уже ведёт к цели
+            for ep in range(episodes):
+                eps = max(0.05, 0.5 * (0.88 ** ep))          # любопытство угасает
+                s = env.reset()
+                for _ in range(max_steps):
+                    a = agent.act(s, epsilon=eps)
+                    sp, done = env.step(a)
+                    agent.learn(s, a, sp)
+                    explored += 1
+                    s = sp
+                    if done:
+                        break
+        steps = self._walk(env, agent)
+        if steps is not None:
+            self.world_maps[world_id] = [[s, a, sp] for (s, a), sp in sorted(agent.model.items())]
+            self.unsolved_worlds.pop(world_id, None)
+            return {"solved": True, "steps": steps, "optimal": env.optimal_steps(),
+                    "explored": explored}
+        self.unsolved_worlds[world_id] = spec
+        return {"solved": False, "explored": explored}
+
     def _solved(self, task_id: str, prog: Program, checked: int, extra: dict) -> dict:
         self.solutions[task_id] = [s.name for s in prog.steps]
         self.unsolved.pop(task_id, None)
@@ -234,6 +314,9 @@ class Mind:
         plan = []
         if self.unsolved and self._dirty_since_retry:
             plan.append(f"вернуться к нерешённому ({len(self.unsolved)}) — язык вырос")
+        if self.unsolved_worlds:
+            plan.append(f"вернуться к неисследованным мирам ({len(self.unsolved_worlds)}) "
+                        f"— исследовать дольше")
         if self._repeated_combos():
             plan.append("консолидировать повторяющиеся комбо из своих решений")
         if self.questions:
@@ -243,13 +326,19 @@ class Mind:
 
     def idle_work(self, *, effort: int = 2) -> dict:
         """Поработать по собственной повестке; вернуть отчёт о сделанном."""
-        report: dict = {"agenda": self.agenda(), "resolved": [], "consolidated": []}
+        report: dict = {"agenda": self.agenda(), "resolved": [], "consolidated": [],
+                        "worlds_resolved": []}
         if self.unsolved and self._dirty_since_retry:
             self._dirty_since_retry = False
             for tid, pairs in list(self.unsolved.items()):
                 res = self.attempt(tid, pairs, effort=effort)
                 if res["solved"]:
                     report["resolved"].append((tid, str(res["program"]), res["checked"]))
+        for wid, spec in list(self.unsolved_worlds.items()):     # думать дольше = исследовать дольше
+            res = self.explore(wid, spec, effort=len(WORLD_LADDER))
+            if res["solved"]:
+                report["worlds_resolved"].append((wid, res["steps"], res["optimal"],
+                                                  res["explored"]))
         for combo in self._repeated_combos():
             self._add_abstraction(list(combo))
             report["consolidated"].append("∘".join(combo))
@@ -264,6 +353,8 @@ class Mind:
                  "lexicon": self.lexicon.words,
                  "solutions": self.solutions,
                  "unsolved": self.unsolved,
+                 "world_maps": self.world_maps,
+                 "unsolved_worlds": self.unsolved_worlds,
                  "questions": self.questions,
                  "texts_read": self.texts_read}
         with open(path, "w", encoding="utf-8") as f:
@@ -282,6 +373,8 @@ class Mind:
             self.lexicon._stems[stem(w)] = w
         self.solutions.update(state["solutions"])
         self.unsolved.update(state["unsolved"])
+        self.world_maps.update(state.get("world_maps", {}))
+        self.unsolved_worlds.update(state.get("unsolved_worlds", {}))
         self.questions = state.get("questions", [])
         self.texts_read = state.get("texts_read", [])
 

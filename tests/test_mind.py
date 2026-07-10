@@ -190,3 +190,41 @@ def test_guided_smoothing_bounds_adversarial_prior() -> None:
     assert cost3("^", "flip_h") <= bound + 1e-9 < 6
     # и порядок предпочтений приора сохраняется (сглаживание ≠ стирание опыта)
     assert cost3("^", "gravity") < cost3("^", "flip_h")
+
+
+def _maze_item(seed: int) -> dict:
+    from thinking_system.world.maze_dist import random_maze
+
+    env = random_maze(seed)
+    return {"id": f"maze-{seed}",
+            "world": {"size": env.size, "walls": sorted(env.walls),
+                      "start": list(env.start), "goal": list(env.goal)}}
+
+
+def test_world_routed_and_solved_by_execution() -> None:
+    mind = Mind()
+    item = _maze_item(306)
+    assert mind.perceive(item) == "world"                    # третий тип опыта
+    res = mind.experience(item, effort=2)
+    assert res["routed"] == "world" and res["solved"]
+    assert res["steps"] >= res["optimal"]                    # реальный проход не короче оптимума
+
+
+def test_world_ladder_escalates_via_agenda() -> None:
+    mind = Mind()
+    res = mind.explore("m300", _maze_item(300)["world"], effort=1)
+    assert not res["solved"]                                 # беглого взгляда честно не хватило
+    assert any("мирам" in a for a in mind.agenda())          # мир попал в повестку
+    work = mind.idle_work()                                  # думать дольше = исследовать дольше
+    assert [w[0] for w in work["worlds_resolved"]] == ["m300"]
+    assert not mind.unsolved_worlds
+
+
+def test_world_map_survives_process(tmp_path: Path) -> None:
+    spec = _maze_item(301)["world"]
+    mind = Mind(str(tmp_path / "m.json"))
+    assert mind.explore("m301", spec, effort=2)["solved"]
+    mind.save()
+    mind2 = Mind(str(tmp_path / "m.json"))                   # новый процесс, та же память
+    res = mind2.explore("m301", spec, effort=2)
+    assert res["solved"] and res["explored"] == 0            # решил сразу по карте из памяти

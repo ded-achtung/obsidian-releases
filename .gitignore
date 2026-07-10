@@ -18,3 +18,4 @@ books/*.mobi
 books/*.djvu
 books/*.txt
 mind_state.json
+mind_worlds_state.json
