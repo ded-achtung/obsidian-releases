@@ -69,6 +69,7 @@ class Mind:
         self.world_skill_size: int | None = None             # размер миров навыка
         self.worlds_practiced: int = 0                       # на скольких мирах навык тренирован
         self.questions: list[str] = []                       # слова, которые встретил, но не заземлил
+        self.pending_defs: list[str] = []                    # определения, ждущие заземления слов
         self.texts_read: list[str] = []
         self._dirty_since_retry = False
         self.state_path = state_path
@@ -144,25 +145,33 @@ class Mind:
                     groundable.append(parsed[0])
                     changed = True
         gaps = sorted({w for line in others for w in definition_gaps(line, known)})
-        return {"value": len(new_words) + len(groundable),
+        answers = [q for q in self.questions                 # текст отвечает на открытый вопрос,
+                   if any(stems_match(stem(q), stem(w)) for w in demos)]  # если ПОКАЗЫВАЕТ слово
+        return {"value": len(new_words) + len(groundable), "answers": answers,
                 "new_words": new_words, "groundable": groundable, "gaps": gaps}
 
     def read(self, text: str) -> dict:
-        """Учебник: показы заземляют слова индукцией, определения/синонимы растят язык."""
+        """Учебник: показы заземляют слова индукцией, определения/синонимы растят язык.
+
+        Незавершённые определения (есть незаземлённые слова-операции) не
+        выбрасываются, а ЖДУТ в pending_defs — и достраиваются, когда нужное
+        слово заземлится позже (хоть из другого текста)."""
         from thinking_system.language.morphology import stem
 
         demos, others = self._scan(text)
         learned = [w for w, ex in demos.items() if self.lexicon.learn(w, ex)]
         defined: list[str] = []
         changed = True
-        while changed:                                       # цепочки определений внутри текста
-            changed = False
-            for line in others:
+        while changed:                                       # цепочки определений: внутри текста
+            changed = False                                  # и через отложенные из прежних текстов
+            for line in others + self.pending_defs:
                 known = self.lexicon.known_stems()
                 parsed = parse_grid_definition(line, known)
                 if parsed and self.lexicon.define(*parsed):
                     defined.append(parsed[0])
                     self._add_abstraction(self.lexicon.words[parsed[0]])
+                    if line in self.pending_defs:
+                        self.pending_defs.remove(line)
                     changed = True
                     continue
                 alias = parse_grid_alias(line, known)
@@ -173,6 +182,9 @@ class Mind:
 
         known = self.lexicon.known_stems()
         gaps = {w for line in others for w in definition_gaps(line, known)}
+        for line in others:                                  # определение с пробелами — цель на потом
+            if definition_gaps(line, known) and line not in self.pending_defs:
+                self.pending_defs.append(line)
         open_qs = {q for q in set(self.questions) | gaps
                    if not known_has(q, known)}               # выученное — не вопрос
         self.questions = sorted(open_qs)
@@ -183,22 +195,26 @@ class Mind:
                 "вопросы": sorted(g for g in gaps if not known_has(g, known))}
 
     def study_library(self, library: dict[str, str]) -> list[dict]:
-        """ЛЮБОПЫТСТВО над библиотекой: читать в порядке эпистемической ценности.
+        """Выбор ЧТО читать: сначала ЦЕЛИ (открытые вопросы), потом любопытство.
 
-        На каждом шаге агент заново оценивает непрочитанные тексты (чтение
-        одного меняет ценность других — куррикулум возникает сам) и честно
-        останавливается, когда выучить больше нечего.
+        Текст, отвечающий на открытый вопрос агента, читается раньше более
+        «ценных» — вопросы направляют чтение (активные цели), эпистемическая
+        ценность упорядочивает остальное. На каждом шаге агент заново
+        оценивает непрочитанное (куррикулум возникает сам) и честно
+        останавливается, когда ни целей, ни нового не осталось.
         """
         unread = dict(library)
         log: list[dict] = []
         while unread:
             peeks = {t: self.peek(x) for t, x in unread.items()}
-            best = max(peeks, key=lambda t: peeks[t]["value"])
-            if peeks[best]["value"] == 0:
+            best = max(peeks, key=lambda t: (len(peeks[t]["answers"]), peeks[t]["value"]))
+            if peeks[best]["value"] == 0 and not peeks[best]["answers"]:
                 log.append({"пропущено": sorted(unread), "причина": "ничего выучить"})
                 break
-            log.append({"выбрано": best, "ценность": peeks[best]["value"],
-                        **self.read(unread.pop(best))})
+            entry = {"выбрано": best, "ценность": peeks[best]["value"]}
+            if peeks[best]["answers"]:
+                entry["цель"] = peeks[best]["answers"]       # прочитан РАДИ вопроса, не ценности
+            log.append({**entry, **self.read(unread.pop(best))})
         return log
 
     # ── способность: решение грид-задачи с эскалацией размышления ──────────────────
@@ -423,6 +439,7 @@ class Mind:
                  "world_skill_size": self.world_skill_size,
                  "worlds_practiced": self.worlds_practiced,
                  "questions": self.questions,
+                 "pending_defs": self.pending_defs,
                  "texts_read": self.texts_read}
         with open(path, "w", encoding="utf-8") as f:
             json.dump(state, f, ensure_ascii=False, indent=1)
@@ -447,6 +464,7 @@ class Mind:
         self.world_skill_size = state.get("world_skill_size")
         self.worlds_practiced = state.get("worlds_practiced", 0)
         self.questions = state.get("questions", [])
+        self.pending_defs = state.get("pending_defs", [])
         self.texts_read = state.get("texts_read", [])
 
     # ── внутреннее ─────────────────────────────────────────────────────────────────

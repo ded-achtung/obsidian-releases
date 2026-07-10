@@ -240,3 +240,26 @@ def test_world_skill_transfers_to_fresh_worlds() -> None:
     with_skill = mind.explore("t215", fresh, effort=1)
     scratch = Mind().explore("t215", fresh, effort=1)
     assert with_skill["solved"] and not scratch["solved"]    # беглого взгляда хватает ТОЛЬКО с навыком
+
+
+def test_questions_drive_reading_and_pending_definitions() -> None:
+    mind = Mind()
+    mind.read(TEXTBOOK)                                      # отражение/переворот заземлены
+    res = mind.read("инверсия это сначала обращение потом отражение")
+    assert res["вопросы"] == ["обращение"]                   # определение не собрать — вопрос
+    assert mind.pending_defs                                 # …и оно ЖДЁТ, а не выброшено
+    lib = {
+        "ценный": ("падение [[5, 0], [0, 0]] → [[0, 0], [5, 0]]\n"
+                   "падение [[3, 3], [0, 0]] → [[0, 0], [3, 3]]\n"
+                   "остов [[0, 0], [0, 7]] → [[7]]"),
+        "отвечающий": ("обращение [[1, 2], [3, 4]] → [[1, 3], [2, 4]]\n"
+                       "обращение [[5, 0, 6]] → [[5], [0], [6]]"),
+    }
+    log = mind.study_library(lib)
+    assert log[0]["выбрано"] == "отвечающий"                 # ЦЕЛЬ важнее ценности (1 < 2)
+    assert log[0]["цель"] == ["обращение"]
+    assert "обращение" not in mind.questions                 # вопрос снят показом
+    assert not mind.pending_defs                             # определение достроено…
+    prog = mind.lexicon.program("инверсия")
+    g = to_grid([[1, 2], [3, 4]])
+    assert prog is not None and prog(g) == to_grid([[3, 1], [4, 2]])  # …и это поворот на 90°

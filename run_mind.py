@@ -52,8 +52,10 @@ def main() -> None:
     ap.add_argument("--state", default="mind_state.json")
     ap.add_argument("--library", nargs="+",
                     default=[os.path.join("books", "textbook_grids_2.md"),
+                             os.path.join("books", "textbook_grids_4.md"),
                              os.path.join("books", "notes_grids.md"),
-                             os.path.join("books", "textbook_grids.md")])
+                             os.path.join("books", "textbook_grids.md"),
+                             os.path.join("books", "textbook_grids_3.md")])
     ap.add_argument("--data-dir", default=None)
     args = ap.parse_args()
 
@@ -91,7 +93,8 @@ def main() -> None:
         if "пропущено" in entry:
             print(f"   пропустил {entry['пропущено']}: {entry['причина']}")
             continue
-        print(f"   выбрал «{entry['выбрано']}» (ценность {entry['ценность']}): "
+        goal = (f" — РАДИ ВОПРОСА {entry['цель']}" if "цель" in entry else "")
+        print(f"   выбрал «{entry['выбрано']}» (ценность {entry['ценность']}{goal}): "
               f"показы {entry['выучено_слов']}, определения {entry['определено']}"
               + (f", вопросы {entry['вопросы']}" if entry["вопросы"] else ""))
     print(f"   библиотека: {len(mind.abstractions)} абстракций {mind.abstractions}; "

@@ -102,7 +102,7 @@ def deep_stage(tasks: dict, base: dict, seed: list, lib: list, splits: list, arg
     for r in range(1, args.deep_rounds + 1):
         bigram = bigram_prior([[st.name for st in p.steps] for p in pool])
         rnd = f", раунд {r}/{args.deep_rounds}" if args.deep_rounds > 1 else ""
-        print(f"\n── Умный поиск глубины 3 по нерешённым (бюджет {args.deep}/задачу; "
+        print(f"\n── Умный поиск глубины {args.deep_depth} по нерешённым (бюджет {args.deep}/задачу; "
               f"биграммы из {len(pool)} проверенных решений + эвристика цели"
               + (f"; язык + {len(lib)} абстракций" if lib else "") + rnd + ") ──")
         round_correct: list = []
@@ -117,7 +117,7 @@ def deep_stage(tasks: dict, base: dict, seed: list, lib: list, splits: list, arg
                 if args.objects:
                     extra += object_param.instantiate() + object_param.instantiate_predicates(list(t.train))
                 prog, n = guided_induce(list(t.train), seed + lib + [guard(p) for p in extra],
-                                        bigram, max_depth=3, budget=args.deep)
+                                        bigram, max_depth=args.deep_depth, budget=args.deep)
                 checked += n
                 if prog is None:
                     continue
@@ -169,6 +169,9 @@ def main() -> None:
                     help="итеративный wake/sleep: раунды deep-поиска, между ними пул "
                          "проверенных решений пополняется и язык растёт (стоп, если "
                          "раунд не дал новых верных решений)")
+    ap.add_argument("--deep-depth", type=int, default=3, metavar="D",
+                    help="глубина умного поиска deep-стадии (по умолчанию 3; глубже — "
+                         "тот же бюджет, приор и эвристика должны вести)")
     args = ap.parse_args()
 
     seed = guarded_grid_seed()
