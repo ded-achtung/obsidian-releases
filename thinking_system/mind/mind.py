@@ -27,7 +27,8 @@ import os
 from collections import Counter
 
 from thinking_system.mind.lexicon import (GridLexicon, definition_gaps, parse_grid_alias,
-                                          parse_grid_definition, parse_grid_demo)
+                                          parse_grid_definition, parse_grid_demo,
+                                          parse_move_advice, parse_move_demo)
 from thinking_system.reasoning import object_param, parametric
 from thinking_system.reasoning.deep_search import bigram_prior, guided_induce
 from thinking_system.reasoning.grid_seed import guard, guarded_grid_seed
@@ -50,6 +51,7 @@ WORLD_LADDER = [(3, 60), (40, 1500)]
 # новый мир С ТОЙ ЖЕ целью исследуется с тёплым стартом от навыка
 WORLD_SKILL_PRACTICE = 400                                   # эпизодов практики на решённый мир
 WORLD_SKILL_MIX = 0.5                                        # доля шагов исследования по навыку
+WORLD_ADVICE_MIX = 0.5                                       # доля шагов по СОВЕТУ из текста
 
 
 class Mind:
@@ -70,6 +72,8 @@ class Mind:
         self.worlds_practiced: int = 0                       # на скольких мирах навык тренирован
         self.questions: list[str] = []                       # слова, которые встретил, но не заземлил
         self.pending_defs: list[str] = []                    # определения, ждущие заземления слов
+        self.action_words: dict[str, int] = {}               # слово → действие мира (0..3)
+        self.world_advice: list[int] = []                    # совет из текста: действия исследования
         self.texts_read: list[str] = []
         self._dirty_since_retry = False
         self.state_path = state_path
@@ -147,7 +151,10 @@ class Mind:
         gaps = sorted({w for line in others for w in definition_gaps(line, known)})
         answers = [q for q in self.questions                 # текст отвечает на открытый вопрос,
                    if any(stems_match(stem(q), stem(w)) for w in demos)]  # если ПОКАЗЫВАЕТ слово
-        return {"value": len(new_words) + len(groundable), "answers": answers,
+        new_moves = [m[0] for line in others if (m := parse_move_demo(line))
+                     and self._resolve_action(m[0]) is None]  # показы ДЕЙСТВИЙ мира — тоже новое
+        return {"value": len(new_words) + len(groundable) + len(set(new_moves)),
+                "answers": answers,
                 "new_words": new_words, "groundable": groundable, "gaps": gaps}
 
     def read(self, text: str) -> dict:
@@ -160,6 +167,20 @@ class Mind:
 
         demos, others = self._scan(text)
         learned = [w for w, ex in demos.items() if self.lexicon.learn(w, ex)]
+        moves: dict[str, list] = {}                          # показы действий МИРА в том же тексте
+        for line in others:
+            m = parse_move_demo(line)
+            if m:
+                moves.setdefault(m[0], []).append((m[1], m[2]))
+        moves_learned = [w for w, ex in moves.items() if self._learn_move(w, ex)]
+        advice: list[str] = []
+        for line in others:                                  # совет опирается на выученные действия
+            adv = parse_move_advice(line, {stem(w) for w in self.action_words})
+            if adv:
+                acts = [a for w in adv if (a := self._resolve_action(w)) is not None]
+                if acts:
+                    advice = adv
+                    self.world_advice = sorted(set(acts))
         defined: list[str] = []
         changed = True
         while changed:                                       # цепочки определений: внутри текста
@@ -192,6 +213,7 @@ class Mind:
         if defined or learned:
             self._dirty_since_retry = True
         return {"выучено_слов": learned, "определено": defined,
+                "выучено_действий": moves_learned, "совет": advice,
                 "вопросы": sorted(g for g in gaps if not known_has(g, known))}
 
     def study_library(self, library: dict[str, str]) -> list[dict]:
@@ -284,6 +306,28 @@ class Mind:
                 return t
         return None
 
+    def _learn_move(self, word: str, examples: list) -> bool:
+        """Заземлить слово-действие ИНДУКЦИЕЙ: какое действие мира объясняет
+        ВСЕ показанные переходы позиций; неоднозначность — честный отказ."""
+        from thinking_system.world.gridworld import GridWorld
+
+        fits = [a for a, d in enumerate(GridWorld.MOVES)
+                if all((f[0] + d[0], f[1] + d[1]) == tuple(t) for f, t in examples)]
+        if len(fits) != 1:
+            return False
+        self.action_words[word] = fits[0]
+        return True
+
+    def _resolve_action(self, word: str) -> int | None:
+        """Любая форма слова-действия → действие (по основам, как resolve слов)."""
+        from thinking_system.language.morphology import stem
+
+        from thinking_system.mind.lexicon import stems_match
+
+        s = stem(word)
+        hits = {a for w, a in self.action_words.items() if stems_match(s, stem(w))}
+        return hits.pop() if len(hits) == 1 else None
+
     def _skill_encoder(self):
         from thinking_system.agent.latent_qoption import TileEncoder
 
@@ -354,6 +398,10 @@ class Mind:
                 for _ in range(max_steps):
                     if W is not None and mix_rng.random() < WORLD_SKILL_MIX:
                         a = self._skill_action(W, enc, s)    # тёплый старт: шаг по навыку
+                    elif (W is None and self.world_advice    # знание из ТЕКСТА: совет
+                          and mix_rng.random() < WORLD_ADVICE_MIX):
+                        cnt = [agent.counts[(s, aa)] for aa in self.world_advice]
+                        a = self.world_advice[cnt.index(min(cnt))]
                     else:
                         a = agent.act(s, epsilon=eps)
                     sp, done = env.step(a)
@@ -440,6 +488,8 @@ class Mind:
                  "worlds_practiced": self.worlds_practiced,
                  "questions": self.questions,
                  "pending_defs": self.pending_defs,
+                 "action_words": self.action_words,
+                 "world_advice": self.world_advice,
                  "texts_read": self.texts_read}
         with open(path, "w", encoding="utf-8") as f:
             json.dump(state, f, ensure_ascii=False, indent=1)
@@ -465,6 +515,8 @@ class Mind:
         self.worlds_practiced = state.get("worlds_practiced", 0)
         self.questions = state.get("questions", [])
         self.pending_defs = state.get("pending_defs", [])
+        self.action_words = state.get("action_words", {})
+        self.world_advice = state.get("world_advice", [])
         self.texts_read = state.get("texts_read", [])
 
     # ── внутреннее ─────────────────────────────────────────────────────────────────

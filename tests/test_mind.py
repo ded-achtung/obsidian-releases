@@ -263,3 +263,18 @@ def test_questions_drive_reading_and_pending_definitions() -> None:
     prog = mind.lexicon.program("инверсия")
     g = to_grid([[1, 2], [3, 4]])
     assert prog is not None and prog(g) == to_grid([[3, 1], [4, 2]])  # …и это поворот на 90°
+
+
+def test_text_to_worlds_actions_and_advice() -> None:
+    mind = Mind()
+    res = mind.read("вниз (0, 0) → (1, 0)\nвниз (2, 1) → (3, 1)\nнаправо (1, 2) → (1, 3)\n"
+                    "если не знаешь куда, иди вниз или направо")
+    assert res["выучено_действий"] == ["вниз", "направо"]    # заземлено индукцией из переходов
+    assert mind.action_words == {"вниз": 1, "направо": 3}
+    assert mind.world_advice == [1, 3]                       # совет составлен из выученных слов
+    # неоднозначный показ (диагональ) — честный отказ
+    assert not Mind().read("наискосок (0, 0) → (1, 1)")["выучено_действий"]
+    fresh = _maze_item(215)["world"]                         # свежий мир, агент миров не решал
+    advised = mind.explore("t215", fresh, effort=1)
+    scratch = Mind().explore("t215", fresh, effort=1)
+    assert advised["solved"] and not scratch["solved"]       # знания из ТЕКСТА хватает бегло

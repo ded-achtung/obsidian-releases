@@ -25,6 +25,7 @@ from thinking_system.reasoning.grids import Grid, to_grid
 from thinking_system.reasoning.induction import Primitive, Program, induce
 
 _GRID_RE = re.compile(r"\[\s*\[[^\[\]]*\](?:\s*,\s*\[[^\[\]]*\])*\s*\]")
+_POS_RE = re.compile(r"\(\s*(\d+)\s*,\s*(\d+)\s*\)")
 _SEP_RE = re.compile(r"\s*(?:=|даёт|дает|равно|→|->)\s*")
 _WORD_RE = re.compile(r"[а-яёa-z]+")
 _SEQ = {"сначала", "потом", "затем", "после"}
@@ -93,6 +94,33 @@ def parse_grid_demo(line: str):
         if words:
             return words[-1], grids[0], grids[1]
     return None
+
+
+def parse_move_demo(line: str):
+    """Показ ДЕЙСТВИЯ в мире: «<слово> (0, 0) → (1, 0)» → (слово, откуда, куда).
+
+    Тот же принцип, что у грид-показа: слово заземляется не переводом, а
+    ИНДУКЦИЕЙ — какое из действий мира объясняет переход позиций."""
+    if _GRID_RE.search(line):
+        return None                                          # это грид-показ, не мир
+    positions = [(int(r), int(c)) for r, c in _POS_RE.findall(line)]
+    if len(positions) != 2 or not _SEP_RE.search(line):
+        return None
+    first = _POS_RE.search(line)
+    words = _content(tokenize(line[: first.start()]))
+    if not words:
+        return None
+    return words[-1], positions[0], positions[1]
+
+
+def parse_move_advice(line: str, action_stems: set[str]):
+    """Совет «…иди <действие> или <действие>» → слова-действия (в любых формах)."""
+    toks = tokenize(line)
+    if "иди" not in toks:
+        return None
+    after = toks[toks.index("иди") + 1:]
+    words = [w for w in after if any(stems_match(stem(w), k) for k in action_stems)]
+    return words or None
 
 
 def parse_grid_definition(line: str, known_stems: set[str]):
