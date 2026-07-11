@@ -55,7 +55,7 @@ def main() -> None:
                              os.path.join("books", "textbook_grids_4.md"),
                              os.path.join("books", "notes_grids.md"),
                              os.path.join("books", "textbook_grids.md"),
-                             os.path.join("books", "textbook_grids_3.md")])
+                             os.path.join("books", "textbook_grids_5.md")])
     ap.add_argument("--data-dir", default=None)
     args = ap.parse_args()
 
@@ -96,6 +96,8 @@ def main() -> None:
         goal = (f" — РАДИ ВОПРОСА {entry['цель']}" if "цель" in entry else "")
         print(f"   выбрал «{entry['выбрано']}» (ценность {entry['ценность']}{goal}): "
               f"показы {entry['выучено_слов']}, определения {entry['определено']}"
+              + (f", ЭКСПЕРИМЕНТ: {entry['выведено_экспериментом']}"
+                 if entry.get("выведено_экспериментом") else "")
               + (f", вопросы {entry['вопросы']}" if entry["вопросы"] else ""))
     print(f"   библиотека: {len(mind.abstractions)} абстракций {mind.abstractions}; "
           f"словарь {len(mind.lexicon.words)} слов; вопросы агента: {mind.questions}")

@@ -26,7 +26,8 @@ import json
 import os
 from collections import Counter
 
-from thinking_system.mind.lexicon import (GridLexicon, definition_gaps, parse_grid_alias,
+from thinking_system.mind.lexicon import (GridLexicon, definition_gaps,
+                                          parse_definition_slots, parse_grid_alias,
                                           parse_grid_definition, parse_grid_demo,
                                           parse_move_advice, parse_move_demo)
 from thinking_system.reasoning import object_param, parametric
@@ -149,20 +150,86 @@ class Mind:
                     groundable.append(parsed[0])
                     changed = True
         gaps = sorted({w for line in others for w in definition_gaps(line, known)})
+        exp_targets = {u for (_, _, _, u, _) in self._experiment_slots(demos)}
         answers = [q for q in self.questions                 # текст отвечает на открытый вопрос,
-                   if any(stems_match(stem(q), stem(w)) for w in demos)]  # если ПОКАЗЫВАЕТ слово
+                   if any(stems_match(stem(q), stem(w)) for w in demos)   # если ПОКАЗЫВАЕТ слово
+                   or any(stems_match(stem(q), stem(u)) for u in exp_targets)]  # …или даёт ЭКСПЕРИМЕНТ
         new_moves = [m[0] for line in others if (m := parse_move_demo(line))
                      and self._resolve_action(m[0]) is None]  # показы ДЕЙСТВИЙ мира — тоже новое
         return {"value": len(new_words) + len(groundable) + len(set(new_moves)),
                 "answers": answers,
                 "new_words": new_words, "groundable": groundable, "gaps": gaps}
 
+    def _experiment_slots(self, demos: dict) -> list:
+        """Ждущие определения, где неизвестно РОВНО одно слово, а показы
+        ОПРЕДЕЛЯЕМОГО слова есть в demos, — сырьё для эксперимента."""
+        from thinking_system.language.morphology import stem
+
+        from thinking_system.mind.lexicon import stems_match
+
+        known = self.lexicon.known_stems()
+        out = []
+        for line in self.pending_defs:
+            slots = parse_definition_slots(line, known)
+            if not slots:
+                continue
+            new_w, ops = slots
+            unknowns = [w for w, k in ops if not k]
+            demo_w = next((d for d in demos if stems_match(stem(new_w), stem(d))), None)
+            if len(unknowns) == 1 and demo_w is not None:
+                out.append((line, new_w, ops, unknowns[0], demos[demo_w]))
+        return out
+
+    def _run_experiments(self, demos: dict) -> list[str]:
+        """ВОПРОС порождает ЭКСПЕРИМЕНТ: перебор гипотез-примитивов исполнением.
+
+        Гипотеза «неизвестное слово = примитив p» подставляется в ждущее
+        определение и проверяется НА ПОКАЗАХ определяемого слова; заземляется
+        только ЕДИНСТВЕННАЯ подходящая гипотеза — неоднозначность или пустота
+        честно оставляют вопрос открытым. Так значение слова ВЫВОДИТСЯ
+        исполнением, а не читается из показа."""
+        from thinking_system.language.morphology import stem
+
+        results = []
+        for line, new_w, ops, unknown, examples in self._experiment_slots(demos):
+            fits = []
+            for p in self.prims:
+                steps, ok = [], True
+                for w, _ in ops:
+                    if w == unknown:
+                        steps.append(p)
+                        continue
+                    prog_w = self.lexicon.program(w)
+                    if prog_w is None:
+                        ok = False
+                        break
+                    steps.extend(prog_w.steps)
+                if not ok:
+                    continue
+                try:
+                    if all(Program(steps)(i) == o for i, o in examples):
+                        fits.append(p)
+                except Exception:  # noqa: BLE001 — гипотеза неисполнима на показах
+                    continue
+                if len(fits) > 1:
+                    break                                    # неоднозначно — дальше не нужно
+            if len(fits) != 1:
+                continue
+            self.lexicon.words[unknown] = [fits[0].name]     # гипотеза подтверждена уникально
+            self.lexicon._stems[stem(unknown)] = unknown
+            if self.lexicon.define(new_w, [w for w, _ in ops]):
+                self._add_abstraction(self.lexicon.words[new_w])
+            self.pending_defs.remove(line)
+            results.append(f"{unknown} = {fits[0].name} (достроено «{new_w}»)")
+        return results
+
     def read(self, text: str) -> dict:
         """Учебник: показы заземляют слова индукцией, определения/синонимы растят язык.
 
         Незавершённые определения (есть незаземлённые слова-операции) не
         выбрасываются, а ЖДУТ в pending_defs — и достраиваются, когда нужное
-        слово заземлится позже (хоть из другого текста)."""
+        слово заземлится позже (хоть из другого текста) или когда ВОПРОС
+        порождает эксперимент (показы определяемого слова + перебор гипотез)."""
         from thinking_system.language.morphology import stem
 
         demos, others = self._scan(text)
@@ -202,18 +269,21 @@ class Mind:
         from thinking_system.mind.lexicon import known_has
 
         known = self.lexicon.known_stems()
-        gaps = {w for line in others for w in definition_gaps(line, known)}
         for line in others:                                  # определение с пробелами — цель на потом
             if definition_gaps(line, known) and line not in self.pending_defs:
                 self.pending_defs.append(line)
+        experiments = self._run_experiments(demos)           # вопрос + показы → эксперимент
+        known = self.lexicon.known_stems()
+        gaps = {w for line in others for w in definition_gaps(line, known)}
         open_qs = {q for q in set(self.questions) | gaps
                    if not known_has(q, known)}               # выученное — не вопрос
         self.questions = sorted(open_qs)
         self.texts_read.append(text[:60])
-        if defined or learned:
+        if defined or learned or experiments:
             self._dirty_since_retry = True
         return {"выучено_слов": learned, "определено": defined,
                 "выучено_действий": moves_learned, "совет": advice,
+                "выведено_экспериментом": experiments,
                 "вопросы": sorted(g for g in gaps if not known_has(g, known))}
 
     def study_library(self, library: dict[str, str]) -> list[dict]:

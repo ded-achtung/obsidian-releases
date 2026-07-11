@@ -153,6 +153,23 @@ def parse_grid_alias(line: str, known_stems: set[str]):
     return None
 
 
+def parse_definition_slots(line: str, known_stems: set[str]):
+    """Определение с ПРОБЕЛАМИ: «<новое> это сначала <A> потом <B>» →
+    (новое, [(слово-операция, известно?)…]) в текстовом порядке, или None.
+
+    В отличие от parse_grid_definition, не требует, чтобы все операции были
+    известны, — это сырьё для ЭКСПЕРИМЕНТА над неизвестным словом."""
+    toks = tokenize(line)
+    if "это" not in toks or not any(w in _SEQ for w in toks):
+        return None
+    i = toks.index("это")
+    new = [w for w in _content(toks[:i]) if not known_has(w, known_stems)]
+    ops = [(w, known_has(w, known_stems)) for w in _content(toks[i + 1:])]
+    if len(new) == 1 and len(ops) >= 2:
+        return new[0], ops
+    return None
+
+
 def definition_gaps(line: str, known_stems: set[str]) -> list[str]:
     """Незаземлённые слова-операции в строке-определении — открытые ВОПРОСЫ агента."""
     toks = tokenize(line)

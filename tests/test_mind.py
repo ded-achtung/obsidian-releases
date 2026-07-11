@@ -118,7 +118,7 @@ LIB_BASE = """
 LIB_ADV = """
 поворот это сначала отражение потом переворот
 зеркалирование значит отражение
-инверсия это сначала обращение потом отражение
+инверсия это сначала обращение потом переворот
 """
 LIB_NOISE = """
 Головоломки на квадратных полях известны с древности.
@@ -245,7 +245,7 @@ def test_world_skill_transfers_to_fresh_worlds() -> None:
 def test_questions_drive_reading_and_pending_definitions() -> None:
     mind = Mind()
     mind.read(TEXTBOOK)                                      # отражение/переворот заземлены
-    res = mind.read("инверсия это сначала обращение потом отражение")
+    res = mind.read("инверсия это сначала обращение потом переворот")
     assert res["вопросы"] == ["обращение"]                   # определение не собрать — вопрос
     assert mind.pending_defs                                 # …и оно ЖДЁТ, а не выброшено
     lib = {
@@ -262,7 +262,7 @@ def test_questions_drive_reading_and_pending_definitions() -> None:
     assert not mind.pending_defs                             # определение достроено…
     prog = mind.lexicon.program("инверсия")
     g = to_grid([[1, 2], [3, 4]])
-    assert prog is not None and prog(g) == to_grid([[3, 1], [4, 2]])  # …и это поворот на 90°
+    assert prog is not None and prog(g) == to_grid([[2, 4], [1, 3]])  # …и это поворот против часовой
 
 
 def test_text_to_worlds_actions_and_advice() -> None:
@@ -278,3 +278,27 @@ def test_text_to_worlds_actions_and_advice() -> None:
     advised = mind.explore("t215", fresh, effort=1)
     scratch = Mind().explore("t215", fresh, effort=1)
     assert advised["solved"] and not scratch["solved"]       # знания из ТЕКСТА хватает бегло
+
+
+def test_question_spawns_experiment() -> None:
+    mind = Mind()
+    mind.read(TEXTBOOK)                                      # отражение/переворот заземлены
+    mind.read("инверсия это сначала обращение потом переворот")
+    assert mind.questions == ["обращение"] and mind.pending_defs
+    res = mind.read("инверсия [[1, 2], [3, 4]] → [[2, 4], [1, 3]]\n"
+                    "инверсия [[5, 0, 6]] → [[6], [0], [5]]")
+    assert not res["выучено_слов"]                           # показ инверсии глубиной 1 не берётся
+    assert res["выведено_экспериментом"] == ["обращение = transpose (достроено «инверсия»)"]
+    assert "обращение" not in mind.questions                 # вопрос закрыт ЭКСПЕРИМЕНТОМ
+    assert not mind.pending_defs
+    prog = mind.lexicon.program("инверсия")
+    assert prog(to_grid([[1, 2], [3, 4]])) == to_grid([[2, 4], [1, 3]])
+
+
+def test_experiment_refuses_ambiguity() -> None:
+    mind = Mind()
+    mind.read(TEXTBOOK)
+    mind.read("штука это сначала тайна потом отражение")
+    res = mind.read("штука [[1]] → [[1]]")                   # показ совместим со МНОГИМИ гипотезами
+    assert not res["выведено_экспериментом"]                 # неоднозначно — честный отказ
+    assert "тайна" in mind.questions                         # вопрос остаётся открытым
